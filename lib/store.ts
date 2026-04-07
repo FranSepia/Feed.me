@@ -69,7 +69,7 @@ export function generatePositions(count: number): [number, number, number][] {
     const angle  = i * golden + offset
     const radius = Math.sqrt(i + 1) * 4.8
     const x = Math.cos(angle) * radius
-    const y = Math.sin(angle) * radius * 0.45
+    const y = Math.sin(angle) * radius * 0.75
     const z = Math.sin(i * 0.9 + offset) * 7
     return [x, y, z] as [number, number, number]
   })

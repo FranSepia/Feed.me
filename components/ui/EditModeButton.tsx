@@ -18,37 +18,31 @@ export function EditModeButton() {
       title={editMode ? 'Exit edit mode' : 'Edit mode'}
       style={{
         position: 'fixed',
-        bottom: isMobile ? '90px' : '24px',
+        bottom: isMobile ? '16px' : '24px',
         left: '24px',
         zIndex: 100,
         width: '44px',
         height: '44px',
         borderRadius: '50%',
-        border: editMode
-          ? '1.5px solid rgba(255,180,0,0.5)'
-          : '1.5px solid rgba(255,255,255,0.12)',
+        borderTop: editMode ? '1px solid rgba(255,220,100,0.9)' : '1px solid rgba(255,255,255,0.90)',
+        borderLeft: editMode ? '1px solid rgba(255,220,100,0.9)' : '1px solid rgba(255,255,255,0.90)',
+        borderBottom: editMode ? '1px solid rgba(180,120,0,0.4)' : '1px solid rgba(180,180,180,0.35)',
+        borderRight: editMode ? '1px solid rgba(180,120,0,0.4)' : '1px solid rgba(180,180,180,0.35)',
         cursor: 'pointer',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        backdropFilter: 'blur(16px)',
-        WebkitBackdropFilter: 'blur(16px)',
+        backdropFilter: 'blur(20px)',
+        WebkitBackdropFilter: 'blur(20px)',
         transition: 'all 0.18s',
-        transform: hover ? 'scale(1.08)' : 'scale(1)',
-        // Aqua glassy style matching the bar
+        transform: editMode ? 'translateY(-1px)' : hover ? 'scale(1.05)' : 'scale(1)',
         background: editMode
-          ? [
-              'linear-gradient(180deg, rgba(255,255,255,0.22) 0%, rgba(255,255,255,0) 52%)',
-              'linear-gradient(175deg, #ffb300 0%, #e65c00 100%)',
-            ].join(', ')
-          : [
-              'linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0) 52%)',
-              'linear-gradient(175deg, rgba(60,60,60,0.55) 0%, rgba(15,15,15,0.7) 100%)',
-            ].join(', '),
+          ? 'linear-gradient(145deg, rgba(255,220,100,0.92) 0%, rgba(220,150,20,0.82) 100%)'
+          : 'linear-gradient(160deg, rgba(255,255,255,0.68) 0%, rgba(240,240,240,0.52) 100%)',
         boxShadow: editMode
-          ? '0 4px 18px rgba(255,150,0,0.4), 0 1px 4px rgba(0,0,0,0.4)'
-          : '0 2px 10px rgba(0,0,0,0.4)',
-        color: editMode ? 'white' : 'rgba(255,255,255,0.45)',
+          ? '4px 4px 10px rgba(140,100,0,0.3), -3px -3px 8px rgba(255,240,180,0.7)'
+          : 'inset 2px 2px 6px rgba(160,160,160,0.35), inset -2px -2px 6px rgba(255,255,255,0.75)',
+        color: editMode ? 'rgba(80,45,0,0.95)' : 'rgba(68,72,96,0.80)',
       }}
     >
       {editMode ? <IconPencilActive /> : <IconPencil />}

@@ -9,10 +9,15 @@ export function Canvas3D() {
   const bgColor = useCanvasStore((s) => s.bgColor)
   const setSelectedNode = useCanvasStore((s) => s.setSelectedNode)
 
+  // Use window dimensions at init time for camera setup (not state — only needs to be right at first load)
+  const isMobileInit = typeof window !== 'undefined' && window.innerWidth < 600
+  const initZ = isMobileInit ? 34 : 20
+  const initFov = isMobileInit ? 65 : 60
+
   return (
     <div className="w-full h-full absolute inset-0">
       <Canvas
-        camera={{ position: [0, 0, 20], fov: 60, near: 0.1, far: 200 }}
+        camera={{ position: [0, 0, initZ], fov: initFov, near: 0.1, far: 200 }}
         gl={{ antialias: true, alpha: false }}
         style={{ background: bgColor }}
         dpr={[1, 2]}

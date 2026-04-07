@@ -1,6 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { Html } from '@react-three/drei'
 import { useSpring, animated } from '@react-spring/three'
@@ -11,24 +11,32 @@ interface Props {
   node: NodeData
   isSelected: boolean
   isDimmed: boolean
+  isOrbit: boolean
   targetPosition: [number, number, number]
 }
 
-export function SpotifyNode({ node, isSelected, isDimmed, targetPosition }: Props) {
+export function SpotifyNode({ node, isSelected, isDimmed, isOrbit, targetPosition }: Props) {
   const setSelectedNode = useCanvasStore((s) => s.setSelectedNode)
   const removeNode = useCanvasStore((s) => s.removeNode)
   const editMode = useCanvasStore((s) => s.editMode)
   const selectedNodeId = useCanvasStore((s) => s.selectedNode)
-  const [hovered, setHovered] = useState(false)
+  const nodes = useCanvasStore((s) => s.nodes)
+  const [playing, setPlaying] = useState(false)
   const meshRef = useRef<THREE.Mesh>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
   const { camera } = useThree()
 
-  // Auto-play when a related node is selected (same tag, not self)
-  const autoPlay = !isSelected && !isDimmed && selectedNodeId !== null
+  const selectedNode = nodes.find((n) => n.id === selectedNodeId)
+  const autoPlay = !isSelected && !isDimmed && selectedNodeId !== null &&
+    (selectedNode?.type === 'image' || selectedNode?.type === 'video')
+
+  const shouldShow = isSelected || autoPlay
+
+  const embedUrl = `https://open.spotify.com/embed/track/${node.content}?utm_source=generator&theme=0&autoplay=1`
 
   const springs = useSpring({
     position: targetPosition,
-    scale: isSelected ? 1.12 : autoPlay ? 1.06 : hovered ? 1.04 : 1,
+    scale: isSelected ? 0.32 : isOrbit ? 0.82 : autoPlay ? 1.06 : 1,
     config: { mass: 1.2, tension: 140, friction: 26 },
   })
 
@@ -36,56 +44,106 @@ export function SpotifyNode({ node, isSelected, isDimmed, targetPosition }: Prop
     if (meshRef.current) meshRef.current.quaternion.copy(camera.quaternion)
   })
 
-  const handleClick = (e: { stopPropagation: () => void }) => {
+  // Stop music when node is hidden
+  useEffect(() => {
+    if (!shouldShow) {
+      if (containerRef.current) containerRef.current.innerHTML = ''
+      setPlaying(false)
+    }
+  }, [shouldShow])
+
+  const startPlayback = () => {
+    if (containerRef.current && !playing) {
+      // Must set visible BEFORE appending iframe — browser checks visibility for autoplay
+      containerRef.current.style.display = 'block'
+      const iframe = document.createElement('iframe')
+      iframe.src = embedUrl
+      iframe.width = '300'
+      iframe.height = '152'
+      iframe.frameBorder = '0'
+      iframe.allow = 'autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture'
+      iframe.style.borderRadius = '12px'
+      iframe.style.display = 'block'
+      containerRef.current.appendChild(iframe)
+      setPlaying(true)
+    }
+  }
+
+  // The entire node area is an HTML div — this guarantees the click is a real DOM event,
+  // which is required for the browser to grant autoplay permission to the iframe.
+  const handleNodeClick = (e: React.MouseEvent) => {
     e.stopPropagation()
     if (editMode) return
+    startPlayback()
     setSelectedNode(isSelected ? null : node.id)
   }
 
   return (
     <animated.mesh
       ref={meshRef}
-      position={springs.position as unknown as [number,number,number]}
-      scale={springs.scale.to((s) => [s * 3.2, s * 2, 1] as [number,number,number])}
-      onClick={handleClick}
-      onPointerOver={(e: { stopPropagation: () => void }) => { e.stopPropagation(); setHovered(true) }}
-      onPointerOut={() => setHovered(false)}
+      position={springs.position as unknown as [number, number, number]}
+      scale={springs.scale.to((s) => [s * 3.2, s * 2, 1] as [number, number, number])}
     >
       <planeGeometry args={[1, 1]} />
       <meshBasicMaterial transparent opacity={0} />
-      <Html center distanceFactor={10} style={{ pointerEvents: (isSelected || autoPlay) ? 'all' : 'none' }}>
-        <div style={{ position: 'relative', opacity: isDimmed ? 0.32 : 1, transition: 'opacity 0.4s' }}>
+      <Html center distanceFactor={10} style={{ pointerEvents: 'all' }}>
+        {/* Outer div covers the full node area — every click is a DOM event (required for autoplay) */}
+        <div
+          onClick={handleNodeClick}
+          style={{
+            position: 'relative',
+            opacity: isDimmed ? 0.32 : 1,
+            transition: 'opacity 0.4s',
+            userSelect: 'none',
+            cursor: editMode ? 'default' : 'pointer',
+            padding: '20px',
+            margin: '-20px',
+          }}
+        >
+          {/* Tags — CSS-positioned above the card, left-aligned */}
           {isSelected && node.tags.length > 0 && (
-            <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', justifyContent: 'center', marginBottom: '6px' }}>
+            <div style={{
+              position: 'absolute', bottom: '100%', left: '20px',
+              display: 'flex', gap: '5px', flexWrap: 'nowrap', paddingBottom: '6px',
+            }}>
               {node.tags.map((tag) => (
                 <span key={tag} style={{
-                  background: 'rgba(255,255,255,0.14)', backdropFilter: 'blur(8px)',
-                  border: '1px solid rgba(255,255,255,0.2)', color: 'rgba(255,255,255,0.85)',
-                  fontSize: '11px', padding: '3px 10px', borderRadius: '20px', whiteSpace: 'nowrap',
+                  background: 'rgba(20,20,20,0.65)', backdropFilter: 'blur(10px)',
+                  border: '1px solid rgba(255,255,255,0.25)', color: 'rgba(255,255,255,0.92)',
+                  fontSize: '11px', padding: '4px 11px', borderRadius: '20px', whiteSpace: 'nowrap',
                 }}>#{tag}</span>
               ))}
             </div>
           )}
-          {(isSelected || autoPlay) ? (
-            <iframe
-              src={`https://open.spotify.com/embed/track/${node.content}?utm_source=generator&theme=0${autoPlay && !isSelected ? '&autoplay=1' : ''}`}
-              width="300" height="152" frameBorder="0"
-              allow="autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture"
-              style={{ borderRadius: '12px' }}
-            />
-          ) : (
-            <div style={{ background: '#1DB954', borderRadius: '12px', padding: '14px 18px', display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', width: '220px' }}>
+
+          {/* Iframe container — shown when playing and shouldShow */}
+          <div
+            ref={containerRef}
+            style={{ display: (shouldShow && playing) ? 'block' : 'none' }}
+          />
+
+          {/* Green card — shown when not yet playing */}
+          {!playing && (
+            <div style={{
+              background: '#1DB954', borderRadius: '12px', padding: '14px 18px',
+              display: 'flex', alignItems: 'center', gap: '12px',
+              width: '220px',
+            }}>
               <svg width="24" height="24" viewBox="0 0 24 24" fill="white">
                 <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z"/>
               </svg>
               <div>
                 <div style={{ color: 'white', fontSize: '12px', fontWeight: 600 }}>{node.title}</div>
-                <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '11px' }}>Click to play</div>
+                <div style={{ color: 'rgba(255,255,255,0.7)', fontSize: '11px' }}>▶ Reproducir</div>
               </div>
             </div>
           )}
+
           {editMode && (
-            <div style={{ position: 'absolute', top: '-8px', right: '-8px', pointerEvents: 'all' }}>
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{ position: 'absolute', top: '-8px', right: '-8px', pointerEvents: 'all' }}
+            >
               <DeleteButton onDelete={() => removeNode(node.id)} />
             </div>
           )}

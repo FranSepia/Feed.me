@@ -18,10 +18,11 @@ interface Props {
   node: NodeData
   isSelected: boolean
   isDimmed: boolean
+  isOrbit: boolean
   targetPosition: [number, number, number]
 }
 
-export function ImageNode({ node, isSelected, isDimmed, targetPosition }: Props) {
+export function ImageNode({ node, isSelected, isDimmed, isOrbit, targetPosition }: Props) {
   const setSelectedNode = useCanvasStore((s) => s.setSelectedNode)
   const removeNode = useCanvasStore((s) => s.removeNode)
   const editMode = useCanvasStore((s) => s.editMode)
@@ -35,7 +36,8 @@ export function ImageNode({ node, isSelected, isDimmed, targetPosition }: Props)
   const h = 3
 
   const targetOpacity = isDimmed ? 0.32 : 1
-  const targetScale = isSelected ? 1.12 : hovered ? 1.04 : 1
+  const mobileOrbitScale = typeof window !== 'undefined' && window.innerWidth < 600 ? 0.55 : 0.82
+  const targetScale = isSelected ? 1.12 : isOrbit ? (hovered ? mobileOrbitScale + 0.08 : mobileOrbitScale) : hovered ? 1.04 : 1
 
   const springs = useSpring({
     position: targetPosition,
@@ -72,16 +74,15 @@ export function ImageNode({ node, isSelected, isDimmed, targetPosition }: Props)
         toneMapped={false}
       />
 
-      {/* Tags — clearly above image top edge, high z-index */}
+      {/* Tags — left-aligned, just above the top edge, growing rightward */}
       {isSelected && node.tags.length > 0 && (
         <Html
-          center
           distanceFactor={10}
-          position={[0, 0.72, 0.01]}
+          position={[-0.5, 0.62, 0.01]}
           zIndexRange={[30, 20]}
           style={{ pointerEvents: 'none', userSelect: 'none' }}
         >
-          <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', justifyContent: 'center', maxWidth: '280px' }}>
+          <div style={{ display: 'flex', gap: '5px', flexWrap: 'nowrap', justifyContent: 'flex-start', paddingBottom: '4px' }}>
             {node.tags.map((tag) => (
               <span key={tag} style={{
                 background: 'rgba(20,20,20,0.65)',
@@ -98,31 +99,38 @@ export function ImageNode({ node, isSelected, isDimmed, targetPosition }: Props)
         </Html>
       )}
 
-      {/* Caption / date overlay at bottom */}
+      {/* Caption — below image, floating, full image width, left edge anchor */}
       {(node.caption || node.date) && (
         <Html
-          center
           distanceFactor={10}
-          position={[0, -0.44, 0.01]}
+          position={[-0.5, -0.515, 0.01]}
           zIndexRange={[10, 0]}
           style={{ pointerEvents: 'none', userSelect: 'none' }}
         >
           <div style={{
-            background: 'rgba(0,0,0,0.38)',
-            backdropFilter: 'blur(10px)',
-            borderRadius: '0 0 8px 8px',
-            padding: '7px 12px 8px',
-            display: 'flex', flexDirection: 'column', gap: '2px',
-            minWidth: '120px', maxWidth: '260px',
+            display: 'flex', flexDirection: 'column', gap: '1px',
+            width: `${Math.round(w * 120)}px`,
             opacity: isDimmed ? 0.1 : 1, transition: 'opacity 0.4s',
+            paddingTop: '4px',
           }}>
             {node.caption && (
-              <span style={{ color: 'rgba(255,255,255,0.88)', fontSize: '12px', lineHeight: 1.4 }}>
+              <span style={{
+                color: 'rgba(255,255,255,0.88)',
+                fontSize: '12px',
+                lineHeight: 1.4,
+                fontStyle: 'italic',
+                textShadow: '0 1px 4px rgba(0,0,0,0.5)',
+              }}>
                 {node.caption}
               </span>
             )}
             {node.date && (
-              <span style={{ color: 'rgba(255,255,255,0.45)', fontSize: '10px', letterSpacing: '0.03em' }}>
+              <span style={{
+                color: 'rgba(255,255,255,0.5)',
+                fontSize: '10px',
+                letterSpacing: '0.03em',
+                textShadow: '0 1px 3px rgba(0,0,0,0.5)',
+              }}>
                 {formatDate(node.date)}
               </span>
             )}

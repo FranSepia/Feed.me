@@ -12,10 +12,11 @@ interface Props {
   node: NodeData
   isSelected: boolean
   isDimmed: boolean
+  isOrbit: boolean
   targetPosition: [number, number, number]
 }
 
-export function TextNode({ node, isSelected, isDimmed, targetPosition }: Props) {
+export function TextNode({ node, isSelected, isDimmed, isOrbit, targetPosition }: Props) {
   const setSelectedNode = useCanvasStore((s) => s.setSelectedNode)
   const removeNode = useCanvasStore((s) => s.removeNode)
   const editMode = useCanvasStore((s) => s.editMode)
@@ -38,7 +39,7 @@ export function TextNode({ node, isSelected, isDimmed, targetPosition }: Props) 
 
   const springs = useSpring({
     position: targetPosition,
-    scale: isSelected ? 1.12 : hovered ? 1.04 : 1,
+    scale: isSelected ? 1.12 : isOrbit ? (hovered ? 0.90 : 0.82) : hovered ? 1.04 : 1,
     opacity: isDimmed ? 0.32 : 1,
     config: { mass: 1.2, tension: 140, friction: 26 },
   })
@@ -66,27 +67,6 @@ export function TextNode({ node, isSelected, isDimmed, targetPosition }: Props) 
       <planeGeometry args={[1, 1]} />
       <animated.meshBasicMaterial transparent opacity={springs.opacity.to((o) => o * 0)} color="#fff" />
 
-      {/* Tags — above card, z-index high */}
-      {isSelected && node.tags.length > 0 && (
-        <Html
-          center
-          distanceFactor={10}
-          position={[0, 0.62, 0.01]}
-          zIndexRange={[30, 20]}
-          style={{ pointerEvents: 'none', userSelect: 'none' }}
-        >
-          <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', justifyContent: 'center' }}>
-            {node.tags.map((tag) => (
-              <span key={tag} style={{
-                background: aboveTagBg, backdropFilter: 'blur(8px)',
-                border: `1px solid ${tagBorder}`, color: aboveTagClr,
-                fontSize: '11px', padding: '3px 10px', borderRadius: '20px', whiteSpace: 'nowrap',
-              }}>#{tag}</span>
-            ))}
-          </div>
-        </Html>
-      )}
-
       {/* Card — square, fixed 200×200, overflow scroll */}
       <Html
         center
@@ -95,6 +75,21 @@ export function TextNode({ node, isSelected, isDimmed, targetPosition }: Props) 
         style={{ pointerEvents: 'none', userSelect: 'none' }}
       >
         <div style={{ position: 'relative' }}>
+          {/* Tags — CSS-positioned above the card, left-aligned */}
+          {isSelected && node.tags.length > 0 && (
+            <div style={{
+              position: 'absolute', bottom: '100%', left: 0,
+              display: 'flex', gap: '5px', flexWrap: 'nowrap', paddingBottom: '6px',
+            }}>
+              {node.tags.map((tag) => (
+                <span key={tag} style={{
+                  background: 'rgba(20,20,20,0.65)', backdropFilter: 'blur(10px)',
+                  border: '1px solid rgba(255,255,255,0.25)', color: 'rgba(255,255,255,0.92)',
+                  fontSize: '11px', padding: '4px 11px', borderRadius: '20px', whiteSpace: 'nowrap',
+                }}>#{tag}</span>
+              ))}
+            </div>
+          )}
           <div style={{
             width: '200px', height: '200px',
             background: cardBg,

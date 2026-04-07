@@ -44,24 +44,9 @@ function IconMusic() {
   )
 }
 
-function IconProfile() {
-  return (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="8" r="3.5" />
-      <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
-    </svg>
-  )
-}
-
-// ── Apple Aqua glassy pill button ────────────────────────────────────────────
-const BUTTON_THEMES: Record<string, { from: string; to: string; glow: string }> = {
-  image:   { from: '#4a9eff', to: '#0055cc', glow: 'rgba(74,158,255,0.45)' },
-  text:    { from: '#b06aff', to: '#6200cc', glow: 'rgba(176,106,255,0.45)' },
-  spotify: { from: '#1fdf64', to: '#0a7a2e', glow: 'rgba(31,223,100,0.45)' },
-  video:   { from: '#ff6b6b', to: '#cc0000', glow: 'rgba(255,107,107,0.45)' },
-  profile: { from: '#ffffff', to: '#aaaaaa', glow: 'rgba(255,255,255,0.3)' },
-  default: { from: '#ffffff', to: '#aaaaaa', glow: 'rgba(255,255,255,0.25)' },
-}
+// ── Neumorphic bar base color ─────────────────────────────────────────────────
+// All shadows are calculated relative to this base
+const BAR_BG = 'rgba(200,205,218,0.72)'
 
 interface AquaButtonProps {
   icon: React.ReactNode
@@ -74,18 +59,15 @@ interface AquaButtonProps {
 
 function AquaButton({ icon, label, active, themeKey, onClick, compact }: AquaButtonProps) {
   const [hovered, setHovered] = useState(false)
-  const theme = BUTTON_THEMES[themeKey] ?? BUTTON_THEMES.default
-  const lit = active || hovered
 
-  const bgLit = [
-    `linear-gradient(180deg, rgba(255,255,255,0.28) 0%, rgba(255,255,255,0) 52%)`,
-    `linear-gradient(175deg, ${theme.from} 0%, ${theme.to} 100%)`,
-  ].join(', ')
-
-  const bgDim = [
-    `linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0) 52%)`,
-    `linear-gradient(175deg, rgba(72,72,72,0.5) 0%, rgba(18,18,18,0.65) 100%)`,
-  ].join(', ')
+  // Inactive = sunken (inset shadow)
+  // Active   = raised/elevated (outset shadow + bright pill)
+  const shadowSunken =
+    'inset 1px 1px 4px rgba(140,145,160,0.35), inset -1px -1px 4px rgba(255,255,255,0.55)'
+  const shadowRaised =
+    '3px 3px 8px rgba(120,125,140,0.30), -2px -2px 6px rgba(255,255,255,0.70)'
+  const shadowHover =
+    'inset 1px 1px 2px rgba(140,145,160,0.25), inset -1px -1px 2px rgba(255,255,255,0.45)'
 
   return (
     <button
@@ -97,27 +79,34 @@ function AquaButton({ icon, label, active, themeKey, onClick, compact }: AquaBut
         alignItems: 'center',
         justifyContent: 'center',
         gap: compact ? '0' : '7px',
-        padding: compact ? '10px' : '8px 18px',
+        padding: compact ? '9px' : '9px 18px',
         borderRadius: '50px',
-        border: lit
-          ? `1px solid rgba(0,0,0,0.22)`
-          : `1px solid rgba(255,255,255,0.10)`,
+        // Bevel: light top-left / dark bottom-right
+        border: active
+          ? '1px solid rgba(255,255,255,0.82)'
+          : '1px solid rgba(255,255,255,0.55)',
+        borderTop: active ? '1px solid rgba(255,255,255,0.95)' : '1px solid rgba(255,255,255,0.7)',
+        borderLeft: active ? '1px solid rgba(255,255,255,0.95)' : '1px solid rgba(255,255,255,0.7)',
+        borderBottom: active ? '1px solid rgba(180,185,205,0.5)' : '1px solid rgba(180,185,205,0.4)',
+        borderRight: active ? '1px solid rgba(180,185,205,0.5)' : '1px solid rgba(180,185,205,0.4)',
         cursor: 'pointer',
-        transition: 'box-shadow 0.18s, transform 0.13s, background 0.18s',
-        transform: active ? 'scale(0.95)' : hovered ? 'scale(1.04)' : 'scale(1)',
-        background: lit ? bgLit : bgDim,
-        boxShadow: lit
-          ? `0 4px 18px ${theme.glow}, 0 1px 4px rgba(0,0,0,0.45)`
-          : `0 1px 6px rgba(0,0,0,0.35)`,
-        color: lit ? 'white' : 'rgba(255,255,255,0.42)',
+        transition: 'all 0.16s ease',
+        // Active raised = moves up slightly; inactive sunken = no transform
+        transform: active ? 'translateY(-1px)' : 'translateY(0)',
+        background: active
+          ? 'linear-gradient(145deg, rgba(255,255,255,0.72) 0%, rgba(230,232,238,0.55) 100%)'
+          : 'transparent',
+        boxShadow: active ? shadowRaised : hovered ? shadowHover : shadowSunken,
+        // Ash/gray tones — low contrast as in reference
+        color: active ? 'rgba(50,54,78,0.95)' : 'rgba(68,72,96,0.80)',
         fontSize: '13px',
         fontWeight: 600,
         letterSpacing: '0.01em',
         outline: 'none',
-        backdropFilter: 'blur(10px)',
-        WebkitBackdropFilter: 'blur(10px)',
-        minWidth: compact ? '42px' : undefined,
-        minHeight: compact ? '42px' : undefined,
+        backdropFilter: 'blur(16px)',
+        WebkitBackdropFilter: 'blur(16px)',
+        minWidth: compact ? '40px' : undefined,
+        minHeight: compact ? '40px' : undefined,
       }}
     >
       {icon}
@@ -149,8 +138,11 @@ export function BottomBar() {
   const [isDragOver, setIsDragOver] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const addNode = useCanvasStore((s) => s.addNode)
-  const setShowProfilePanel = useCanvasStore((s) => s.setShowProfilePanel)
+  const nodes = useCanvasStore((s) => s.nodes)
   const { isMobile } = useResponsive()
+
+  // All unique tags already in the canvas
+  const existingTags = Array.from(new Set(nodes.flatMap((n) => n.tags))).sort()
 
   const handleFileSelect = useCallback((file: File) => {
     if (!file.type.startsWith('image/')) return
@@ -255,13 +247,14 @@ export function BottomBar() {
       {activeType && (
         <div
           style={{
-            background: 'rgba(15,15,15,0.88)',
-            border: '1px solid rgba(255,255,255,0.1)',
-            borderRadius: '20px',
+            background: 'linear-gradient(160deg, rgba(255,255,255,0.72) 0%, rgba(255,255,255,0.48) 100%)',
+            border: '1px solid rgba(255,255,255,0.8)',
+            borderRadius: '24px',
             padding: isMobile ? '14px' : '18px',
             width: isMobile ? '100%' : '360px',
-            backdropFilter: 'blur(28px)',
-            boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
+            backdropFilter: 'blur(32px)',
+            WebkitBackdropFilter: 'blur(32px)',
+            boxShadow: '0 8px 40px rgba(0,0,0,0.12), inset 0 1px 0 rgba(255,255,255,0.95)',
             display: 'flex',
             flexDirection: 'column',
             gap: '10px',
@@ -333,10 +326,10 @@ export function BottomBar() {
                     <polyline points="17 8 12 3 7 8" />
                     <line x1="12" y1="3" x2="12" y2="15" />
                   </svg>
-                  <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: '13px', fontWeight: 500 }}>
+                  <span style={{ color: 'rgba(0,0,0,0.45)', fontSize: '13px', fontWeight: 500 }}>
                     Click to upload or drag & drop
                   </span>
-                  <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: '11px' }}>
+                  <span style={{ color: 'rgba(0,0,0,0.3)', fontSize: '11px' }}>
                     PNG, JPG, GIF, WEBP
                   </span>
                 </div>
@@ -344,9 +337,9 @@ export function BottomBar() {
 
               {/* URL fallback */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.08)' }} />
-                <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: '11px' }}>or paste URL</span>
-                <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.08)' }} />
+                <div style={{ flex: 1, height: '1px', background: 'rgba(0,0,0,0.08)' }} />
+                <span style={{ color: 'rgba(0,0,0,0.35)', fontSize: '11px' }}>or paste URL</span>
+                <div style={{ flex: 1, height: '1px', background: 'rgba(0,0,0,0.08)' }} />
               </div>
               <input
                 placeholder="https://..."
@@ -374,7 +367,7 @@ export function BottomBar() {
                 <button
                   onClick={() => setImageDate(new Date().toISOString().split('T')[0])}
                   style={{
-                    background: 'rgba(255,255,255,0.08)',
+                    background: 'rgba(0,0,0,0.08)',
                     border: '1px solid rgba(255,255,255,0.12)',
                     borderRadius: '8px',
                     color: 'rgba(255,255,255,0.7)',
@@ -446,20 +439,62 @@ export function BottomBar() {
                   style={{ border: '2px dashed rgba(255,255,255,0.15)', borderRadius: '12px', padding: '24px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px', cursor: 'pointer', background: 'rgba(255,255,255,0.02)' }}
                 >
                   <IconVideo />
-                  <span style={{ color: 'rgba(255,255,255,0.55)', fontSize: '13px' }}>Click to upload video</span>
-                  <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: '11px' }}>MP4, MOV, WEBM</span>
+                  <span style={{ color: 'rgba(0,0,0,0.45)', fontSize: '13px' }}>Click to upload video</span>
+                  <span style={{ color: 'rgba(0,0,0,0.3)', fontSize: '11px' }}>MP4, MOV, WEBM</span>
                 </div>
               )}
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.08)' }} />
-                <span style={{ color: 'rgba(255,255,255,0.25)', fontSize: '11px' }}>or YouTube URL</span>
-                <div style={{ flex: 1, height: '1px', background: 'rgba(255,255,255,0.08)' }} />
+                <div style={{ flex: 1, height: '1px', background: 'rgba(0,0,0,0.08)' }} />
+                <span style={{ color: 'rgba(0,0,0,0.35)', fontSize: '11px' }}>or YouTube URL</span>
+                <div style={{ flex: 1, height: '1px', background: 'rgba(0,0,0,0.08)' }} />
               </div>
               <input placeholder="https://youtube.com/watch?v=..." value={videoFile ? '' : videoUrl} onChange={(e) => { setVideoUrl(e.target.value); setVideoFile(null) }} style={inputStyle} />
               <input placeholder="Title (optional)" value={videoTitle} onChange={(e) => setVideoTitle(e.target.value)} style={inputStyle} />
             </div>
           )}
-          <input placeholder="Tags (comma separated)" value={tags} onChange={(e) => setTags(e.target.value)} style={inputStyle} />
+          {/* Tags input + existing tag suggestions */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            <input
+              placeholder="Tags (separados por coma)"
+              value={tags}
+              onChange={(e) => setTags(e.target.value)}
+              style={inputStyle}
+            />
+            {existingTags.length > 0 && (
+              <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+                {existingTags.map((tag) => {
+                  const active = tags.split(',').map(t => t.trim()).includes(tag)
+                  return (
+                    <button
+                      key={tag}
+                      onClick={() => {
+                        const current = tags.split(',').map(t => t.trim()).filter(Boolean)
+                        if (active) {
+                          setTags(current.filter(t => t !== tag).join(', '))
+                        } else {
+                          setTags([...current, tag].join(', '))
+                        }
+                      }}
+                      style={{
+                        background: active ? 'rgba(20,20,20,0.75)' : 'rgba(255,255,255,0.55)',
+                        border: active ? '1px solid rgba(255,255,255,0.3)' : '1px solid rgba(0,0,0,0.12)',
+                        color: active ? 'rgba(255,255,255,0.92)' : 'rgba(50,54,78,0.75)',
+                        fontSize: '11px',
+                        padding: '4px 10px',
+                        borderRadius: '20px',
+                        cursor: 'pointer',
+                        backdropFilter: 'blur(8px)',
+                        transition: 'all 0.15s',
+                        fontWeight: active ? 600 : 400,
+                      }}
+                    >
+                      #{tag}
+                    </button>
+                  )
+                })}
+              </div>
+            )}
+          </div>
           <div style={{ display: 'flex', gap: '8px' }}>
             <AquaButton icon={null} label="Add to canvas" active themeKey={activeType ?? 'default'} onClick={handleAdd} />
             <AquaButton icon={null} label="Cancel" active={false} themeKey="default" onClick={() => setActiveType(null)} />
@@ -470,15 +505,19 @@ export function BottomBar() {
       {/* Bottom action bar */}
       <div
         style={{
-          background: 'rgba(12,12,12,0.72)',
-          border: '1px solid rgba(255,255,255,0.08)',
+          background: 'linear-gradient(160deg, rgba(255,255,255,0.68) 0%, rgba(240,240,240,0.52) 100%)',
+          borderTop: '1px solid rgba(255,255,255,0.90)',
+          borderLeft: '1px solid rgba(255,255,255,0.90)',
+          borderBottom: '1px solid rgba(180,180,180,0.35)',
+          borderRight: '1px solid rgba(180,180,180,0.35)',
           borderRadius: '60px',
-          padding: isMobile ? '8px 10px' : '10px 14px',
+          padding: isMobile ? '6px 8px' : '7px 10px',
           display: 'flex',
           alignItems: 'center',
-          gap: isMobile ? '4px' : '6px',
+          gap: isMobile ? '2px' : '3px',
           backdropFilter: 'blur(28px)',
-          boxShadow: '0 8px 40px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06)',
+          WebkitBackdropFilter: 'blur(28px)',
+          boxShadow: '0 6px 28px rgba(0,0,0,0.10), 0 2px 8px rgba(0,0,0,0.07), inset 0 1px 0 rgba(255,255,255,0.85)',
         }}
       >
         <AquaButton
@@ -513,26 +552,17 @@ export function BottomBar() {
           compact={isMobile}
           onClick={() => setActiveType(activeType === 'video' ? null : 'video')}
         />
-        <div style={{ width: '1px', height: '22px', background: 'rgba(255,255,255,0.08)', margin: '0 2px' }} />
-        <AquaButton
-          icon={<IconProfile />}
-          label="Profile"
-          active={false}
-          themeKey="profile"
-          compact={isMobile}
-          onClick={() => setShowProfilePanel(true)}
-        />
       </div>
     </div>
   )
 }
 
 const inputStyle: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.05)',
-  border: '1px solid rgba(255,255,255,0.1)',
+  background: 'rgba(255,255,255,0.55)',
+  border: '1px solid rgba(255,255,255,0.7)',
   borderRadius: '10px',
   padding: '10px 12px',
-  color: 'white',
+  color: '#222',
   fontSize: '14px',
   outline: 'none',
   width: '100%',

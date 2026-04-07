@@ -11,10 +11,11 @@ interface Props {
   node: NodeData
   isSelected: boolean
   isDimmed: boolean
+  isOrbit: boolean
   targetPosition: [number, number, number]
 }
 
-export function SocialNode({ node, isSelected, isDimmed, targetPosition }: Props) {
+export function SocialNode({ node, isSelected, isDimmed, isOrbit, targetPosition }: Props) {
   const setSelectedNode = useCanvasStore((s) => s.setSelectedNode)
   const removeNode = useCanvasStore((s) => s.removeNode)
   const editMode = useCanvasStore((s) => s.editMode)
@@ -29,7 +30,7 @@ export function SocialNode({ node, isSelected, isDimmed, targetPosition }: Props
 
   const springs = useSpring({
     position: targetPosition,
-    scale: isSelected ? 1.1 : hovered ? 1.04 : 1,
+    scale: isSelected ? 1.1 : isOrbit ? (hovered ? 0.90 : 0.82) : hovered ? 1.04 : 1,
     config: { mass: 1.2, tension: 140, friction: 26 },
   })
 

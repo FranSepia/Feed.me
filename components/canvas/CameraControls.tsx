@@ -5,9 +5,7 @@ import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useCanvasStore } from '@/lib/store'
 
-// Zoom distance so the node fills ~35% of screen height (FOV 60°)
-// nodeH / (2 * tan(30°) * d) = 0.35  →  d = nodeH / 0.404
-const ZOOM_DIST: Record<string, number> = {
+const ZOOM_DIST_DESKTOP: Record<string, number> = {
   image: 7.5,
   video: 7.5,
   text: 5.5,
@@ -15,21 +13,32 @@ const ZOOM_DIST: Record<string, number> = {
   social: 5.5,
 }
 
+const ZOOM_DIST_MOBILE: Record<string, number> = {
+  image: 13,
+  video: 13,
+  text: 10,
+  spotify: 10,
+  social: 10,
+}
+
 export function CameraControls() {
   const { camera, gl } = useThree()
   const isDragging = useRef(false)
   const lastMouse = useRef({ x: 0, y: 0 })
-  // User-controlled "free" target
-  const freeTarget = useRef(new THREE.Vector3(0, 0, 20))
-  // Actual interpolation target (may be overridden by selection)
-  const targetPosition = useRef(new THREE.Vector3(0, 0, 20))
-  const currentPosition = useRef(new THREE.Vector3(0, 0, 20))
+  const lastPinchDist = useRef<number | null>(null)
+
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 600
+  const initZ = isMobile ? 34 : 20
+  const ZOOM_DIST = isMobile ? ZOOM_DIST_MOBILE : ZOOM_DIST_DESKTOP
+
+  const freeTarget = useRef(new THREE.Vector3(0, 0, initZ))
+  const targetPosition = useRef(new THREE.Vector3(0, 0, initZ))
+  const currentPosition = useRef(new THREE.Vector3(0, 0, initZ))
   const wasZoomed = useRef(false)
 
   const selectedNodeId = useCanvasStore((s) => s.selectedNode)
   const nodes = useCanvasStore((s) => s.nodes)
 
-  // When selection changes → move camera
   useEffect(() => {
     if (selectedNodeId) {
       const node = nodes.find((n) => n.id === selectedNodeId)
@@ -38,7 +47,7 @@ export function CameraControls() {
           freeTarget.current.copy(targetPosition.current)
           wasZoomed.current = true
         }
-        const d = ZOOM_DIST[node.type] ?? 7.5
+        const d = ZOOM_DIST[node.type] ?? (isMobile ? 13 : 7.5)
         targetPosition.current.set(
           node.position[0],
           node.position[1],
@@ -55,13 +64,13 @@ export function CameraControls() {
 
   useEffect(() => {
     const canvas = gl.domElement
+    const maxZ = isMobile ? 60 : 50
 
     const onWheel = (e: WheelEvent) => {
       e.preventDefault()
-      if (wasZoomed.current) return
       const delta = e.deltaY * 0.05
-      freeTarget.current.z = THREE.MathUtils.clamp(freeTarget.current.z + delta, -10, 50)
-      targetPosition.current.z = freeTarget.current.z
+      targetPosition.current.z = THREE.MathUtils.clamp(targetPosition.current.z + delta, -10, maxZ)
+      freeTarget.current.z = targetPosition.current.z
     }
 
     const onMouseDown = (e: MouseEvent) => {
@@ -72,33 +81,56 @@ export function CameraControls() {
     }
 
     const onMouseMove = (e: MouseEvent) => {
-      if (!isDragging.current || wasZoomed.current) return
+      if (!isDragging.current) return
       const dx = (e.clientX - lastMouse.current.x) * 0.02
       const dy = (e.clientY - lastMouse.current.y) * 0.02
-      freeTarget.current.x -= dx
-      freeTarget.current.y += dy
-      targetPosition.current.x = freeTarget.current.x
-      targetPosition.current.y = freeTarget.current.y
+      targetPosition.current.x -= dx
+      targetPosition.current.y += dy
+      // Keep freeTarget in sync so deselecting leaves camera at current position
+      freeTarget.current.x = targetPosition.current.x
+      freeTarget.current.y = targetPosition.current.y
       lastMouse.current = { x: e.clientX, y: e.clientY }
     }
 
-    const onMouseUp = () => { isDragging.current = false }
+    const onMouseUp = () => {
+      isDragging.current = false
+      lastPinchDist.current = null
+    }
 
     const onTouchStart = (e: TouchEvent) => {
       if (e.touches.length === 1) {
         isDragging.current = true
         lastMouse.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
+      } else if (e.touches.length === 2) {
+        isDragging.current = false
+        const dx = e.touches[0].clientX - e.touches[1].clientX
+        const dy = e.touches[0].clientY - e.touches[1].clientY
+        lastPinchDist.current = Math.sqrt(dx * dx + dy * dy)
       }
     }
 
     const onTouchMove = (e: TouchEvent) => {
-      if (!isDragging.current || e.touches.length !== 1 || wasZoomed.current) return
+      if (e.touches.length === 2) {
+        // Pinch to zoom — allowed even when a node is selected
+        const dx = e.touches[0].clientX - e.touches[1].clientX
+        const dy = e.touches[0].clientY - e.touches[1].clientY
+        const dist = Math.sqrt(dx * dx + dy * dy)
+        if (lastPinchDist.current !== null) {
+          const delta = (lastPinchDist.current - dist) * 0.05
+          freeTarget.current.z = THREE.MathUtils.clamp(freeTarget.current.z + delta, -10, maxZ)
+          targetPosition.current.z = freeTarget.current.z
+        }
+        lastPinchDist.current = dist
+        return
+      }
+
+      if (!isDragging.current || e.touches.length !== 1) return
       const dx = (e.touches[0].clientX - lastMouse.current.x) * 0.02
       const dy = (e.touches[0].clientY - lastMouse.current.y) * 0.02
-      freeTarget.current.x -= dx
-      freeTarget.current.y += dy
-      targetPosition.current.x = freeTarget.current.x
-      targetPosition.current.y = freeTarget.current.y
+      targetPosition.current.x -= dx
+      targetPosition.current.y += dy
+      freeTarget.current.x = targetPosition.current.x
+      freeTarget.current.y = targetPosition.current.y
       lastMouse.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
     }
 

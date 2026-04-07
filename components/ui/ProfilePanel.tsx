@@ -5,9 +5,9 @@ import { useCanvasStore, SOCIAL_PLATFORMS } from '@/lib/store'
 import { useResponsive } from '@/lib/useResponsive'
 
 const PRESET_COLORS = [
-  '#ede8de', '#f5f0e8', '#f7f3ec', '#ffffff',
-  '#e8ede8', '#e8e8ed', '#1a1a1a', '#0d1117',
-  '#0f0e17', '#1a0a2e', '#0a1628', '#16213e',
+  { hex: '#ede8de', label: 'Beige' },
+  { hex: '#ffffff', label: 'Blanco' },
+  { hex: '#000000', label: 'Negro' },
 ]
 
 type Tab = 'profile' | 'socials'
@@ -71,23 +71,59 @@ export function ProfilePanel() {
 
             {/* Canvas color */}
             <div>
-              <div style={{ color: 'rgba(0,0,0,0.4)', fontSize: '11px', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+              <div style={{ color: 'rgba(0,0,0,0.4)', fontSize: '11px', marginBottom: '12px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
                 Color del canvas
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '7px' }}>
-                {PRESET_COLORS.map((color) => (
-                  <button key={color} onClick={() => setBgColor(color)} style={{
-                    width: '100%', aspectRatio: '1', borderRadius: '8px', background: color,
-                    border: bgColor === color ? '2.5px solid #111' : '2px solid rgba(0,0,0,0.1)',
-                    cursor: 'pointer', transition: 'border 0.15s',
-                  }} />
+              {/* 3 presets + custom picker as one unified row */}
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                {PRESET_COLORS.map((c) => (
+                  <button
+                    key={c.hex}
+                    onClick={() => setBgColor(c.hex)}
+                    title={c.label}
+                    style={{
+                      flex: 1,
+                      height: '40px',
+                      borderRadius: '10px',
+                      background: c.hex,
+                      border: bgColor === c.hex
+                        ? '2.5px solid #111'
+                        : '1.5px solid rgba(0,0,0,0.12)',
+                      cursor: 'pointer',
+                      transition: 'border 0.15s, transform 0.12s',
+                      transform: bgColor === c.hex ? 'scale(1.05)' : 'scale(1)',
+                      boxShadow: bgColor === c.hex ? '0 2px 8px rgba(0,0,0,0.15)' : 'none',
+                    }}
+                  />
                 ))}
+                {/* Custom color — styled to look like a 4th chip */}
+                <label
+                  title="Color personalizado"
+                  style={{
+                    flex: 1, height: '40px', borderRadius: '10px', cursor: 'pointer',
+                    border: !PRESET_COLORS.some(c => c.hex === bgColor)
+                      ? '2.5px solid #111'
+                      : '1.5px solid rgba(0,0,0,0.12)',
+                    background: !PRESET_COLORS.some(c => c.hex === bgColor) ? bgColor : 'transparent',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    overflow: 'hidden', position: 'relative',
+                    transition: 'border 0.15s',
+                    boxShadow: !PRESET_COLORS.some(c => c.hex === bgColor) ? '0 2px 8px rgba(0,0,0,0.15)' : 'none',
+                  }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="rgba(0,0,0,0.35)" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="12" cy="12" r="3"/><path d="M12 2v2m0 16v2M4.22 4.22l1.42 1.42m12.72 12.72 1.42 1.42M2 12h2m16 0h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>
+                  </svg>
+                  <input
+                    type="color"
+                    value={bgColor}
+                    onChange={(e) => setBgColor(e.target.value)}
+                    style={{ position: 'absolute', opacity: 0, width: '100%', height: '100%', cursor: 'pointer' }}
+                  />
+                </label>
               </div>
-              <div style={{ marginTop: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <label style={{ color: 'rgba(0,0,0,0.4)', fontSize: '12px' }}>Custom:</label>
-                <input type="color" value={bgColor} onChange={(e) => setBgColor(e.target.value)}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', width: '36px', height: '26px' }} />
-                <span style={{ color: 'rgba(0,0,0,0.35)', fontSize: '11px', fontFamily: 'monospace' }}>{bgColor}</span>
+              <div style={{ marginTop: '8px', textAlign: 'right' }}>
+                <span style={{ color: 'rgba(0,0,0,0.3)', fontSize: '10px', fontFamily: 'monospace' }}>{bgColor}</span>
               </div>
             </div>
           </div>

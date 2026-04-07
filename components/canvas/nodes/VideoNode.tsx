@@ -16,10 +16,11 @@ interface Props {
   node: NodeData
   isSelected: boolean
   isDimmed: boolean
+  isOrbit: boolean
   targetPosition: [number, number, number]
 }
 
-export function VideoNode({ node, isSelected, isDimmed, targetPosition }: Props) {
+export function VideoNode({ node, isSelected, isDimmed, isOrbit, targetPosition }: Props) {
   const setSelectedNode = useCanvasStore((s) => s.setSelectedNode)
   const removeNode = useCanvasStore((s) => s.removeNode)
   const editMode = useCanvasStore((s) => s.editMode)
@@ -36,7 +37,7 @@ export function VideoNode({ node, isSelected, isDimmed, targetPosition }: Props)
 
   const springs = useSpring({
     position: targetPosition,
-    scale: isSelected ? 1.08 : autoPlay ? 1.04 : hovered ? 1.03 : 1,
+    scale: isSelected ? 1.08 : isOrbit ? (hovered ? 0.90 : 0.82) : autoPlay ? 1.04 : hovered ? 1.03 : 1,
     config: { mass: 1.2, tension: 140, friction: 26 },
   })
 
@@ -65,12 +66,15 @@ export function VideoNode({ node, isSelected, isDimmed, targetPosition }: Props)
       <Html center distanceFactor={10} style={{ pointerEvents: (isSelected || autoPlay) ? 'all' : 'none' }}>
         <div style={{ position: 'relative', opacity: isDimmed ? 0.32 : 1, transition: 'opacity 0.4s' }}>
           {isSelected && node.tags.length > 0 && (
-            <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', justifyContent: 'center', marginBottom: '6px' }}>
+            <div style={{
+              position: 'absolute', bottom: '100%', left: 0,
+              display: 'flex', gap: '5px', flexWrap: 'nowrap', paddingBottom: '6px',
+            }}>
               {node.tags.map((tag) => (
                 <span key={tag} style={{
-                  background: 'rgba(255,255,255,0.14)', backdropFilter: 'blur(8px)',
-                  border: '1px solid rgba(255,255,255,0.2)', color: 'rgba(255,255,255,0.85)',
-                  fontSize: '11px', padding: '3px 10px', borderRadius: '20px', whiteSpace: 'nowrap',
+                  background: 'rgba(20,20,20,0.65)', backdropFilter: 'blur(10px)',
+                  border: '1px solid rgba(255,255,255,0.25)', color: 'rgba(255,255,255,0.92)',
+                  fontSize: '11px', padding: '4px 11px', borderRadius: '20px', whiteSpace: 'nowrap',
                 }}>#{tag}</span>
               ))}
             </div>
