@@ -1,7 +1,6 @@
 'use client'
 
-import { useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
+import { useRef, useState, useEffect } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { Html } from '@react-three/drei'
 import { useSpring, animated } from '@react-spring/three'
@@ -31,6 +30,7 @@ interface Props {
 
 export function VideoNode({ node, isSelected, isDimmed, isOrbit, targetPosition }: Props) {
   const setSelectedNode = useCanvasStore((s) => s.setSelectedNode)
+  const setPlayingVideoUrl = useCanvasStore((s) => s.setPlayingVideoUrl)
   const removeNode = useCanvasStore((s) => s.removeNode)
   const editMode = useCanvasStore((s) => s.editMode)
   const selectedNodeId = useCanvasStore((s) => s.selectedNode)
@@ -53,6 +53,16 @@ export function VideoNode({ node, isSelected, isDimmed, isOrbit, targetPosition 
     scale: isSelected ? 1.08 : isOrbit ? (hovered ? 0.90 : 0.82) : autoPlay ? 1.04 : hovered ? 1.03 : 1,
     config: { mass: 1.2, tension: 140, friction: 26 },
   })
+
+  // When a local video is selected, push its URL to the store so page.tsx can render the modal
+  useEffect(() => {
+    if (isSelected && !isYT) {
+      setPlayingVideoUrl(node.content)
+    } else {
+      setPlayingVideoUrl(null)
+    }
+    return () => { setPlayingVideoUrl(null) }
+  }, [isSelected, isYT, node.content])
 
   useFrame(() => {
     if (meshRef.current) meshRef.current.quaternion.copy(camera.quaternion)
@@ -175,38 +185,6 @@ export function VideoNode({ node, isSelected, isDimmed, isOrbit, targetPosition 
         </Html>
       </animated.mesh>
 
-      {/* Local video modal — rendered directly to body to avoid THREE.js canvas z-index issues */}
-      {isSelected && !isYT && typeof document !== 'undefined' && createPortal(
-        <div
-          onClick={() => setSelectedNode(null)}
-          style={{
-            position: 'fixed', inset: 0, zIndex: 400,
-            background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(6px)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}
-        >
-          <div onClick={(e) => e.stopPropagation()} style={{ position: 'relative', borderRadius: '16px', overflow: 'hidden' }}>
-            <video
-              src={node.content}
-              controls
-              autoPlay
-              style={{ display: 'block', maxWidth: '90vw', maxHeight: '80vh', borderRadius: '16px' }}
-            />
-            <button
-              onClick={() => setSelectedNode(null)}
-              style={{
-                position: 'absolute', top: '10px', right: '10px',
-                width: '32px', height: '32px', borderRadius: '50%',
-                background: 'rgba(0,0,0,0.6)', border: '1px solid rgba(255,255,255,0.3)',
-                color: 'white', fontSize: '16px', cursor: 'pointer',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                lineHeight: 1,
-              }}
-            >✕</button>
-          </div>
-        </div>,
-        document.body
-      )}
     </>
   )
 }

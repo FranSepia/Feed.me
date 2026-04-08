@@ -111,12 +111,14 @@ const DEMO_NODES: NodeData[] = [
 interface CanvasStore {
   nodes: NodeData[]
   selectedNode: string | null
+  playingVideoUrl: string | null
   bgColor: string
   showProfilePanel: boolean
   editMode: boolean
   socials: Record<string, string>
   nodesLoaded: boolean
   setSelectedNode: (id: string | null) => void
+  setPlayingVideoUrl: (url: string | null) => void
   setBgColor: (color: string) => void
   setShowProfilePanel: (show: boolean) => void
   setEditMode: (v: boolean) => void
@@ -129,6 +131,7 @@ interface CanvasStore {
 export const useCanvasStore = create<CanvasStore>((set, get) => ({
   nodes: DEMO_NODES,
   selectedNode: null,
+  playingVideoUrl: null,
   bgColor: '#ede8de',
   showProfilePanel: false,
   editMode: false,
@@ -136,6 +139,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   nodesLoaded: false,
 
   setSelectedNode: (id) => set({ selectedNode: id }),
+  setPlayingVideoUrl: (url) => set({ playingVideoUrl: url }),
   setBgColor: (color) => set({ bgColor: color }),
   setShowProfilePanel: (show) => set({ showProfilePanel: show }),
   setEditMode: (v) => set({ editMode: v }),
