@@ -151,15 +151,17 @@ export function BottomBar() {
 
   // Upload a file to Supabase Storage and return its public URL
   const uploadMedia = async (file: File): Promise<string> => {
+    const db = supabase
+    if (!db) throw new Error('Supabase not configured')
     const sessionId = getSessionId()
     const ext = file.name.split('.').pop() ?? 'bin'
     const path = `${sessionId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
-    const { error } = await supabase.storage.from('media').upload(path, file, {
+    const { error } = await db.storage.from('media').upload(path, file, {
       cacheControl: '31536000',
       upsert: false,
     })
     if (error) throw error
-    const { data } = supabase.storage.from('media').getPublicUrl(path)
+    const { data } = db.storage.from('media').getPublicUrl(path)
     return data.publicUrl
   }
 

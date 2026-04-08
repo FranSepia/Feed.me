@@ -123,9 +123,11 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   // If new user → keep demo nodes so canvas isn't empty.
   loadFromSupabase: async () => {
     if (get().nodesLoaded) return
+    const db = supabase
+    if (!db) { set({ nodesLoaded: true }); return }
     try {
       const sessionId = getSessionId()
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('canvas_nodes')
         .select('*')
         .eq('session_id', sessionId)
@@ -163,21 +165,24 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     set((state) => ({ nodes: [...state.nodes, newNode] }))
 
     // Persist to Supabase
-    try {
-      const { error } = await supabase.from('canvas_nodes').insert({
-        id,
-        session_id: getSessionId(),
-        type: node.type,
-        content: node.content,
-        title: node.title ?? null,
-        caption: node.caption ?? null,
-        tags: node.tags,
-        position: pos,
-        seed: node.seed,
-      })
-      if (error) console.error('Supabase insert error:', error)
-    } catch (e) {
-      console.error('Failed to save node:', e)
+    const db = supabase
+    if (db) {
+      try {
+        const { error } = await db.from('canvas_nodes').insert({
+          id,
+          session_id: getSessionId(),
+          type: node.type,
+          content: node.content,
+          title: node.title ?? null,
+          caption: node.caption ?? null,
+          tags: node.tags,
+          position: pos,
+          seed: node.seed,
+        })
+        if (error) console.error('Supabase insert error:', error)
+      } catch (e) {
+        console.error('Failed to save node:', e)
+      }
     }
   },
 
@@ -195,8 +200,9 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
 
     // Delete from Supabase (demo nodes have "demo-" prefix, skip them)
     if (!id.startsWith('demo-')) {
+      const db = supabase
       try {
-        const { error } = await supabase.from('canvas_nodes').delete().eq('id', id)
+        const { error } = await db?.from('canvas_nodes').delete().eq('id', id)
         if (error) console.error('Supabase delete error:', error)
       } catch (e) {
         console.error('Failed to delete node:', e)
