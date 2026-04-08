@@ -40,9 +40,13 @@ export function FilterButton() {
         left: '24px',
         zIndex: 499,
         display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'flex-start',
+        // Mobile: row — tags accumulate to the right of the button
+        // Desktop: column — tags stack downward below the button
+        flexDirection: isMobile ? 'row' : 'column',
+        alignItems: isMobile ? 'center' : 'flex-start',
+        flexWrap: isMobile ? 'wrap' : 'nowrap',
         gap: '6px',
+        maxWidth: isMobile ? 'calc(100vw - 32px)' : undefined,
       }}>
 
         {/* Trigger button — identical glass style to EditModeButton/ProfileButton */}
@@ -77,24 +81,26 @@ export function FilterButton() {
         </button>
 
         {/* Active selected tags — always visible, no container, just chips */}
-        {isActive && !open && (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '5px' }}>
-            {filterTags.map((tag) => (
-              <button
-                key={tag}
-                onClick={() => toggleTag(tag)}
-                title="Quitar filtro"
-                style={chipStyle(true)}
-              >
-                #{tag} ×
-              </button>
-            ))}
-          </div>
-        )}
+        {isActive && !open && filterTags.map((tag) => (
+          <button
+            key={tag}
+            onClick={() => toggleTag(tag)}
+            title="Quitar filtro"
+            style={chipStyle(true)}
+          >
+            #{tag} ×
+          </button>
+        ))}
 
         {/* All tags shown when dropdown is open — no container, just chips */}
         {open && (
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: '5px' }}>
+          <div style={{
+            display: 'flex',
+            flexDirection: isMobile ? 'row' : 'column',
+            alignItems: isMobile ? 'center' : 'flex-start',
+            flexWrap: 'wrap',
+            gap: '5px',
+          }}>
             {allTags.map((tag) => {
               const active = filterTags.includes(tag)
               return (
