@@ -6,6 +6,7 @@ import { Html } from '@react-three/drei'
 import { useSpring, animated } from '@react-spring/three'
 import * as THREE from 'three'
 import { NodeData, useCanvasStore } from '@/lib/store'
+import { isLightBg } from '@/lib/colors'
 
 function getYouTubeId(url: string): string | null {
   const m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([a-zA-Z0-9_-]{11})/)
@@ -25,6 +26,8 @@ export function VideoNode({ node, isSelected, isDimmed, isOrbit, targetPosition 
   const removeNode = useCanvasStore((s) => s.removeNode)
   const editMode = useCanvasStore((s) => s.editMode)
   const selectedNodeId = useCanvasStore((s) => s.selectedNode)
+  const bgColor = useCanvasStore((s) => s.bgColor)
+  const light = isLightBg(bgColor)
   const [hovered, setHovered] = useState(false)
   const meshRef = useRef<THREE.Mesh>(null)
   const { camera } = useThree()
@@ -72,8 +75,10 @@ export function VideoNode({ node, isSelected, isDimmed, isOrbit, targetPosition 
             }}>
               {node.tags.map((tag) => (
                 <span key={tag} style={{
-                  background: 'rgba(20,20,20,0.65)', backdropFilter: 'blur(10px)',
-                  border: '1px solid rgba(255,255,255,0.25)', color: 'rgba(255,255,255,0.92)',
+                  background: light ? 'rgba(255,255,255,0.75)' : 'rgba(20,20,20,0.65)',
+                  backdropFilter: 'blur(10px)',
+                  border: `1px solid ${light ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.25)'}`,
+                  color: light ? 'rgba(0,0,0,0.75)' : 'rgba(255,255,255,0.92)',
                   fontSize: '11px', padding: '4px 11px', borderRadius: '20px', whiteSpace: 'nowrap',
                 }}>#{tag}</span>
               ))}

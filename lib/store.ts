@@ -169,7 +169,16 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
 
   addNode: async (node) => {
     const id = `node-${Date.now()}`
-    const pos = generatePositions(1)[0]
+    // Spread new nodes in a growing spiral around existing content
+    const count = get().nodes.length
+    const golden = Math.PI * (3 - Math.sqrt(5))
+    const angle = count * golden + Math.random() * 0.8
+    const radius = Math.sqrt(count + 2) * 5 + Math.random() * 4
+    const pos: [number, number, number] = [
+      Math.cos(angle) * radius,
+      Math.sin(angle) * radius * 0.75,
+      (Math.random() - 0.5) * 12,
+    ]
     const newNode: NodeData = { ...node, id, position: pos }
 
     // Optimistic update — show immediately
@@ -212,11 +221,13 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     // Delete from Supabase (demo nodes have "demo-" prefix, skip them)
     if (!id.startsWith('demo-')) {
       const db = supabase
-      try {
-        const { error } = await db?.from('canvas_nodes').delete().eq('id', id)
-        if (error) console.error('Supabase delete error:', error)
-      } catch (e) {
-        console.error('Failed to delete node:', e)
+      if (db) {
+        try {
+          const { error } = await db.from('canvas_nodes').delete().eq('id', id)
+          if (error) console.error('Supabase delete error:', error)
+        } catch (e) {
+          console.error('Failed to delete node:', e)
+        }
       }
     }
   },

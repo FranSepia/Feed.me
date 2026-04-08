@@ -6,6 +6,7 @@ import { useTexture, Html } from '@react-three/drei'
 import { useSpring, animated } from '@react-spring/three'
 import * as THREE from 'three'
 import { NodeData, useCanvasStore } from '@/lib/store'
+import { isLightBg } from '@/lib/colors'
 
 function formatDate(dateStr: string): string {
   const [year, month, day] = dateStr.split('-').map(Number)
@@ -26,7 +27,15 @@ export function ImageNode({ node, isSelected, isDimmed, isOrbit, targetPosition 
   const setSelectedNode = useCanvasStore((s) => s.setSelectedNode)
   const removeNode = useCanvasStore((s) => s.removeNode)
   const editMode = useCanvasStore((s) => s.editMode)
+  const bgColor = useCanvasStore((s) => s.bgColor)
   const [hovered, setHovered] = useState(false)
+
+  const light = isLightBg(bgColor)
+  const tagBg      = light ? 'rgba(255,255,255,0.75)' : 'rgba(20,20,20,0.65)'
+  const tagColor   = light ? 'rgba(0,0,0,0.75)'       : 'rgba(255,255,255,0.92)'
+  const tagBorder  = light ? 'rgba(0,0,0,0.15)'        : 'rgba(255,255,255,0.25)'
+  const captionClr = light ? 'rgba(0,0,0,0.75)'        : 'rgba(255,255,255,0.88)'
+  const dateClr    = light ? 'rgba(0,0,0,0.45)'        : 'rgba(255,255,255,0.5)'
   const meshRef = useRef<THREE.Mesh>(null)
   const { camera } = useThree()
 
@@ -85,10 +94,10 @@ export function ImageNode({ node, isSelected, isDimmed, isOrbit, targetPosition 
           <div style={{ display: 'flex', gap: '5px', flexWrap: 'nowrap', justifyContent: 'flex-start', paddingBottom: '4px' }}>
             {node.tags.map((tag) => (
               <span key={tag} style={{
-                background: 'rgba(20,20,20,0.65)',
+                background: tagBg,
                 backdropFilter: 'blur(10px)',
-                border: '1px solid rgba(255,255,255,0.25)',
-                color: 'rgba(255,255,255,0.92)',
+                border: `1px solid ${tagBorder}`,
+                color: tagColor,
                 fontSize: '11px',
                 padding: '4px 11px',
                 borderRadius: '20px',
@@ -115,21 +124,22 @@ export function ImageNode({ node, isSelected, isDimmed, isOrbit, targetPosition 
           }}>
             {node.caption && (
               <span style={{
-                color: 'rgba(255,255,255,0.88)',
+                color: captionClr,
                 fontSize: '12px',
                 lineHeight: 1.4,
                 fontStyle: 'italic',
-                textShadow: '0 1px 4px rgba(0,0,0,0.5)',
+                textShadow: light ? 'none' : '0 1px 4px rgba(0,0,0,0.5)',
               }}>
                 {node.caption}
               </span>
             )}
             {node.date && (
               <span style={{
-                color: 'rgba(255,255,255,0.5)',
+                color: dateClr,
                 fontSize: '10px',
+                fontStyle: 'italic',
                 letterSpacing: '0.03em',
-                textShadow: '0 1px 3px rgba(0,0,0,0.5)',
+                textShadow: light ? 'none' : '0 1px 3px rgba(0,0,0,0.5)',
               }}>
                 {formatDate(node.date)}
               </span>

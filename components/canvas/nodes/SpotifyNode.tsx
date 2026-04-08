@@ -6,6 +6,7 @@ import { Html } from '@react-three/drei'
 import { useSpring, animated } from '@react-spring/three'
 import * as THREE from 'three'
 import { NodeData, useCanvasStore } from '@/lib/store'
+import { isLightBg } from '@/lib/colors'
 
 interface Props {
   node: NodeData
@@ -21,6 +22,8 @@ export function SpotifyNode({ node, isSelected, isDimmed, isOrbit, targetPositio
   const editMode = useCanvasStore((s) => s.editMode)
   const selectedNodeId = useCanvasStore((s) => s.selectedNode)
   const nodes = useCanvasStore((s) => s.nodes)
+  const bgColor = useCanvasStore((s) => s.bgColor)
+  const light = isLightBg(bgColor)
   const [playing, setPlaying] = useState(false)
   const meshRef = useRef<THREE.Mesh>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -108,8 +111,10 @@ export function SpotifyNode({ node, isSelected, isDimmed, isOrbit, targetPositio
             }}>
               {node.tags.map((tag) => (
                 <span key={tag} style={{
-                  background: 'rgba(20,20,20,0.65)', backdropFilter: 'blur(10px)',
-                  border: '1px solid rgba(255,255,255,0.25)', color: 'rgba(255,255,255,0.92)',
+                  background: light ? 'rgba(255,255,255,0.75)' : 'rgba(20,20,20,0.65)',
+                  backdropFilter: 'blur(10px)',
+                  border: `1px solid ${light ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.25)'}`,
+                  color: light ? 'rgba(0,0,0,0.75)' : 'rgba(255,255,255,0.92)',
                   fontSize: '11px', padding: '4px 11px', borderRadius: '20px', whiteSpace: 'nowrap',
                 }}>#{tag}</span>
               ))}

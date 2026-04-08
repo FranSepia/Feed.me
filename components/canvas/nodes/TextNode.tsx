@@ -33,9 +33,6 @@ export function TextNode({ node, isSelected, isDimmed, isOrbit, targetPosition }
   const textColor   = light ? 'rgba(0,0,0,0.85)'         : 'rgba(255,255,255,0.9)'
   const tagBg       = light ? 'rgba(0,0,0,0.08)'         : 'rgba(255,255,255,0.1)'
   const tagColor    = light ? 'rgba(0,0,0,0.55)'         : 'rgba(255,255,255,0.6)'
-  const tagBorder   = light ? 'rgba(0,0,0,0.12)'         : 'rgba(255,255,255,0.2)'
-  const aboveTagBg  = light ? 'rgba(0,0,0,0.1)'          : 'rgba(255,255,255,0.14)'
-  const aboveTagClr = light ? 'rgba(0,0,0,0.8)'          : 'rgba(255,255,255,0.85)'
 
   const springs = useSpring({
     position: targetPosition,
@@ -83,8 +80,10 @@ export function TextNode({ node, isSelected, isDimmed, isOrbit, targetPosition }
             }}>
               {node.tags.map((tag) => (
                 <span key={tag} style={{
-                  background: 'rgba(20,20,20,0.65)', backdropFilter: 'blur(10px)',
-                  border: '1px solid rgba(255,255,255,0.25)', color: 'rgba(255,255,255,0.92)',
+                  background: light ? 'rgba(255,255,255,0.75)' : 'rgba(20,20,20,0.65)',
+                  backdropFilter: 'blur(10px)',
+                  border: `1px solid ${light ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.25)'}`,
+                  color: light ? 'rgba(0,0,0,0.75)' : 'rgba(255,255,255,0.92)',
                   fontSize: '11px', padding: '4px 11px', borderRadius: '20px', whiteSpace: 'nowrap',
                 }}>#{tag}</span>
               ))}
