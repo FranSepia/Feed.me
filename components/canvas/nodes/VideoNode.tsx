@@ -43,6 +43,7 @@ export function VideoNode({ node, isSelected, isDimmed, isOrbit, targetPosition 
   const ytId = getYouTubeId(node.content)
   const isYT = !!ytId
 
+  // autoPlay = a related-tag node is selected (but not this one), same logic as orbit
   const autoPlay = !isSelected && !isDimmed && selectedNodeId !== null
 
   const captionClr = light ? 'rgba(0,0,0,0.75)'  : 'rgba(255,255,255,0.88)'
@@ -54,13 +55,10 @@ export function VideoNode({ node, isSelected, isDimmed, isOrbit, targetPosition 
     config: { mass: 1.2, tension: 140, friction: 26 },
   })
 
-  // When a local video is selected, push its URL to the store so page.tsx can render the modal
+  // Local videos: signal page.tsx to show the modal player
   useEffect(() => {
-    if (isSelected && !isYT) {
-      setPlayingVideoUrl(node.content)
-    } else {
-      setPlayingVideoUrl(null)
-    }
+    if (isSelected && !isYT) setPlayingVideoUrl(node.content)
+    else setPlayingVideoUrl(null)
     return () => { setPlayingVideoUrl(null) }
   }, [isSelected, isYT, node.content])
 
@@ -74,118 +72,162 @@ export function VideoNode({ node, isSelected, isDimmed, isOrbit, targetPosition 
     setSelectedNode(isSelected ? null : node.id)
   }
 
+  // Fixed card dimensions — thumbnail and iframe share the same size so there's no jump
+  const W = 320
+  const H = 180
+
   return (
-    <>
-      <animated.mesh
-        ref={meshRef}
-        position={springs.position as unknown as [number,number,number]}
-        scale={springs.scale.to((s) => [s * 5.3, s * 3, 1] as [number,number,number])}
-        onClick={handleClick}
-        onPointerOver={(e: { stopPropagation: () => void }) => { e.stopPropagation(); setHovered(true) }}
-        onPointerOut={() => setHovered(false)}
+    <animated.mesh
+      ref={meshRef}
+      position={springs.position as unknown as [number,number,number]}
+      scale={springs.scale.to((s) => [s * 5.3, s * 3, 1] as [number,number,number])}
+      onClick={handleClick}
+      onPointerOver={(e: { stopPropagation: () => void }) => { e.stopPropagation(); setHovered(true) }}
+      onPointerOut={() => setHovered(false)}
+    >
+      <planeGeometry args={[1, 1]} />
+      <meshBasicMaterial transparent opacity={0} />
+
+      <Html
+        center
+        distanceFactor={10}
+        zIndexRange={[50, 0]}
+        style={{ pointerEvents: isSelected ? 'all' : 'none' }}
       >
-        <planeGeometry args={[1, 1]} />
-        <meshBasicMaterial transparent opacity={0} />
+        <div style={{ opacity: isDimmed ? 0.32 : 1, transition: 'opacity 0.4s', position: 'relative' }}>
 
-        <Html center distanceFactor={10} zIndexRange={[50, 0]} style={{ pointerEvents: (isYT && (isSelected || autoPlay)) ? 'all' : 'none' }}>
-          <div style={{ position: 'relative', opacity: isDimmed ? 0.32 : 1, transition: 'opacity 0.4s' }}>
+          {/* Tags above card when selected */}
+          {isSelected && node.tags.length > 0 && (
+            <div style={{
+              position: 'absolute', bottom: '100%', left: 0,
+              display: 'flex', gap: '5px', flexWrap: 'nowrap', paddingBottom: '6px',
+              pointerEvents: 'none',
+            }}>
+              {node.tags.map((tag) => (
+                <span key={tag} style={{
+                  background: light ? 'rgba(255,255,255,0.75)' : 'rgba(20,20,20,0.65)',
+                  backdropFilter: 'blur(10px)',
+                  border: `1px solid ${light ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.25)'}`,
+                  color: light ? 'rgba(0,0,0,0.75)' : 'rgba(255,255,255,0.92)',
+                  fontSize: '11px', padding: '4px 11px', borderRadius: '20px', whiteSpace: 'nowrap',
+                }}>#{tag}</span>
+              ))}
+            </div>
+          )}
 
-            {/* Tags above card when selected */}
-            {isSelected && node.tags.length > 0 && (
-              <div style={{
-                position: 'absolute', bottom: '100%', left: 0,
-                display: 'flex', gap: '5px', flexWrap: 'nowrap', paddingBottom: '6px',
-              }}>
-                {node.tags.map((tag) => (
-                  <span key={tag} style={{
-                    background: light ? 'rgba(255,255,255,0.75)' : 'rgba(20,20,20,0.65)',
-                    backdropFilter: 'blur(10px)',
-                    border: `1px solid ${light ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.25)'}`,
-                    color: light ? 'rgba(0,0,0,0.75)' : 'rgba(255,255,255,0.92)',
-                    fontSize: '11px', padding: '4px 11px', borderRadius: '20px', whiteSpace: 'nowrap',
-                  }}>#{tag}</span>
-                ))}
-              </div>
-            )}
-
-            {/* YouTube embed when selected/autoplay */}
-            {isYT && (isSelected || autoPlay) ? (
-              <iframe
-                width="480" height="270"
-                src={`https://www.youtube.com/embed/${ytId}?autoplay=1`}
-                allow="autoplay; fullscreen"
-                style={{ borderRadius: '12px', border: 'none', display: 'block' }}
+          {isYT ? (
+            /* ── YouTube card: fixed size, thumbnail always visible ── */
+            <div style={{
+              width: `${W}px`, height: `${H}px`,
+              borderRadius: '12px', overflow: 'hidden',
+              position: 'relative', cursor: 'pointer',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+            }}>
+              {/* Thumbnail always in the background */}
+              <img
+                src={`https://img.youtube.com/vi/${ytId}/hqdefault.jpg`}
+                alt="thumbnail"
+                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
               />
-            ) : (
-              /* Thumbnail card (always shown for local; shown when not playing for YT) */
-              <div style={{
-                width: '280px', borderRadius: '12px', overflow: 'hidden',
-                background: 'rgba(0,0,0,0.6)', border: '1px solid rgba(255,255,255,0.1)',
-                display: 'flex', flexDirection: 'column', cursor: 'pointer',
-              }}>
+
+              {(isSelected || autoPlay) ? (
+                /* Iframe overlaid exactly on the thumbnail — same size, no jump */
+                <iframe
+                  width={W} height={H}
+                  src={`https://www.youtube.com/embed/${ytId}?autoplay=1&rel=0&modestbranding=1&playsinline=1`}
+                  allow="autoplay; fullscreen; picture-in-picture"
+                  allowFullScreen
+                  style={{
+                    position: 'absolute', inset: 0, width: '100%', height: '100%',
+                    border: 'none', display: 'block',
+                  }}
+                />
+              ) : (
+                /* Play button overlay */
                 <div style={{
-                  height: '158px', position: 'relative',
+                  position: 'absolute', inset: 0,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: 'rgba(0,0,0,0.18)',
                 }}>
-                  {isYT && (
-                    <img
-                      src={`https://img.youtube.com/vi/${ytId}/mqdefault.jpg`}
-                      alt="thumbnail"
-                      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
-                    />
-                  )}
                   <div style={{
-                    position: 'relative', zIndex: 1,
-                    width: '48px', height: '48px', borderRadius: '50%',
-                    background: 'rgba(255,255,255,0.18)', backdropFilter: 'blur(6px)',
+                    width: '52px', height: '52px', borderRadius: '50%',
+                    background: 'rgba(255,255,255,0.20)', backdropFilter: 'blur(6px)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    border: '1.5px solid rgba(255,255,255,0.4)',
                   }}>
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="white">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
                       <polygon points="5,3 19,12 5,21" />
                     </svg>
                   </div>
                   {node.title && (
                     <div style={{
                       position: 'absolute', bottom: 0, left: 0, right: 0,
-                      background: 'linear-gradient(transparent, rgba(0,0,0,0.7))',
-                      padding: '20px 12px 10px', color: 'white', fontSize: '12px', fontWeight: 500,
+                      background: 'linear-gradient(transparent, rgba(0,0,0,0.75))',
+                      padding: '24px 12px 10px', color: 'white',
+                      fontSize: '12px', fontWeight: 500,
                     }}>{node.title}</div>
                   )}
                 </div>
-              </div>
-            )}
-
-            {/* Caption + date below the card */}
-            {(node.caption || node.date) && (
+              )}
+            </div>
+          ) : (
+            /* ── Local video thumbnail card ── */
+            <div style={{
+              width: `${W}px`, height: `${H}px`, borderRadius: '12px', overflow: 'hidden',
+              background: 'rgba(0,0,0,0.6)', border: '1px solid rgba(255,255,255,0.1)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+              position: 'relative',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+            }}>
               <div style={{
-                paddingTop: '4px', width: '280px',
-                display: 'flex', flexDirection: 'column', gap: '1px',
-                opacity: isDimmed ? 0.1 : 1, transition: 'opacity 0.4s',
-                pointerEvents: 'none',
+                width: '52px', height: '52px', borderRadius: '50%',
+                background: 'rgba(255,255,255,0.18)', backdropFilter: 'blur(6px)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                border: '1.5px solid rgba(255,255,255,0.4)',
               }}>
-                {node.caption && (
-                  <span style={{ color: captionClr, fontSize: '12px', lineHeight: 1.4, fontStyle: 'italic' }}>
-                    {node.caption}
-                  </span>
-                )}
-                {node.date && (
-                  <span style={{ color: dateClr, fontSize: '10px', fontStyle: 'italic', letterSpacing: '0.03em' }}>
-                    {formatDate(node.date)}
-                  </span>
-                )}
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
+                  <polygon points="5,3 19,12 5,21" />
+                </svg>
               </div>
-            )}
+              {node.title && (
+                <div style={{
+                  position: 'absolute', bottom: 0, left: 0, right: 0,
+                  background: 'linear-gradient(transparent, rgba(0,0,0,0.75))',
+                  padding: '24px 12px 10px', color: 'white', fontSize: '12px', fontWeight: 500,
+                }}>{node.title}</div>
+              )}
+            </div>
+          )}
 
-            {editMode && (
-              <div style={{ position: 'absolute', top: '-8px', right: '-8px', pointerEvents: 'all' }}>
-                <DeleteButton onDelete={() => removeNode(node.id)} />
-              </div>
-            )}
-          </div>
-        </Html>
-      </animated.mesh>
+          {/* Caption + date below the card */}
+          {(node.caption || node.date) && (
+            <div style={{
+              paddingTop: '4px', width: `${W}px`,
+              display: 'flex', flexDirection: 'column', gap: '1px',
+              opacity: isDimmed ? 0.1 : 1, transition: 'opacity 0.4s',
+              pointerEvents: 'none',
+            }}>
+              {node.caption && (
+                <span style={{ color: captionClr, fontSize: '12px', lineHeight: 1.4, fontStyle: 'italic' }}>
+                  {node.caption}
+                </span>
+              )}
+              {node.date && (
+                <span style={{ color: dateClr, fontSize: '10px', fontStyle: 'italic', letterSpacing: '0.03em' }}>
+                  {formatDate(node.date)}
+                </span>
+              )}
+            </div>
+          )}
 
-    </>
+          {editMode && (
+            <div style={{ position: 'absolute', top: '-8px', right: '-8px', pointerEvents: 'all' }}>
+              <DeleteButton onDelete={() => removeNode(node.id)} />
+            </div>
+          )}
+        </div>
+      </Html>
+    </animated.mesh>
   )
 }
 
