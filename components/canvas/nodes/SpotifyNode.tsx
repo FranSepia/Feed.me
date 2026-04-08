@@ -8,6 +8,38 @@ import * as THREE from 'three'
 import { NodeData, useCanvasStore } from '@/lib/store'
 import { isLightBg } from '@/lib/colors'
 
+declare global {
+  interface Window {
+    onSpotifyIframeApiReady: (IFrameAPI: any) => void;
+    SpotifyIFrameAPI?: any;
+  }
+}
+
+let apiScriptInjected = false
+const initSpotifyAPI = (callback: (api: any) => void) => {
+  if (typeof window === 'undefined') return
+  if (window.SpotifyIFrameAPI) {
+    callback(window.SpotifyIFrameAPI)
+    return
+  }
+  if (!apiScriptInjected) {
+    apiScriptInjected = true
+    const script = document.createElement('script')
+    script.src = 'https://open.spotify.com/embed/iframe-api/v1'
+    script.async = true
+    document.body.appendChild(script)
+    window.onSpotifyIframeApiReady = (IFrameAPI) => {
+      window.SpotifyIFrameAPI = IFrameAPI
+      document.dispatchEvent(new CustomEvent('spotify-api-ready', { detail: IFrameAPI }))
+    }
+  }
+  const listener = (e: any) => {
+    document.removeEventListener('spotify-api-ready', listener)
+    callback(e.detail)
+  }
+  document.addEventListener('spotify-api-ready', listener)
+}
+
 interface Props {
   node: NodeData
   isSelected: boolean
@@ -21,21 +53,51 @@ export function SpotifyNode({ node, isSelected, isDimmed, isOrbit, targetPositio
   const removeNode = useCanvasStore((s) => s.removeNode)
   const editMode = useCanvasStore((s) => s.editMode)
   const selectedNodeId = useCanvasStore((s) => s.selectedNode)
-  const nodes = useCanvasStore((s) => s.nodes)
   const bgColor = useCanvasStore((s) => s.bgColor)
   const light = isLightBg(bgColor)
-  const [playing, setPlaying] = useState(false)
   const meshRef = useRef<THREE.Mesh>(null)
-  const containerRef = useRef<HTMLDivElement>(null)
+  const wrapperRef = useRef<HTMLDivElement>(null)
+  const controllerRef = useRef<any>(null)
   const { camera } = useThree()
 
-  const selectedNode = nodes.find((n) => n.id === selectedNodeId)
-  const autoPlay = !isSelected && !isDimmed && selectedNodeId !== null &&
-    (selectedNode?.type === 'image' || selectedNode?.type === 'video')
-
+  const autoPlay = !isSelected && !isDimmed && selectedNodeId !== null
   const shouldShow = isSelected || autoPlay
 
-  const embedUrl = `https://open.spotify.com/embed/track/${node.content}?utm_source=generator&theme=0&autoplay=1`
+  // When shouldShow becomes true, initialize controller and play
+  useEffect(() => {
+    if (!shouldShow || controllerRef.current) return
+    initSpotifyAPI((IFrameAPI) => {
+      if (!wrapperRef.current || controllerRef.current) return
+      
+      const inner = document.createElement('div')
+      wrapperRef.current.innerHTML = ''
+      wrapperRef.current.appendChild(inner)
+
+      const options = {
+        uri: `spotify:track:${node.content}`,
+        width: 300,
+        height: 152,
+        theme: 0,
+      }
+      const callback = (EmbedController: any) => {
+        controllerRef.current = EmbedController
+        EmbedController.addListener('ready', () => {
+          // Play immediately when ready (browser allows it due to prior user click gesture)
+          EmbedController.play()
+        })
+      }
+      IFrameAPI.createController(inner, options, callback)
+    })
+  }, [shouldShow, node.content])
+
+  // Stop/cleanup when no longer showing
+  useEffect(() => {
+    if (!shouldShow && controllerRef.current) {
+      controllerRef.current.destroy()
+      controllerRef.current = null
+      if (wrapperRef.current) wrapperRef.current.innerHTML = ''
+    }
+  }, [shouldShow])
 
   const springs = useSpring({
     position: targetPosition,
@@ -47,37 +109,9 @@ export function SpotifyNode({ node, isSelected, isDimmed, isOrbit, targetPositio
     if (meshRef.current) meshRef.current.quaternion.copy(camera.quaternion)
   })
 
-  // Stop music when node is hidden
-  useEffect(() => {
-    if (!shouldShow) {
-      if (containerRef.current) containerRef.current.innerHTML = ''
-      setPlaying(false)
-    }
-  }, [shouldShow])
-
-  const startPlayback = () => {
-    if (containerRef.current && !playing) {
-      // Must set visible BEFORE appending iframe — browser checks visibility for autoplay
-      containerRef.current.style.display = 'block'
-      const iframe = document.createElement('iframe')
-      iframe.src = embedUrl
-      iframe.width = '300'
-      iframe.height = '152'
-      iframe.frameBorder = '0'
-      iframe.allow = 'autoplay; clipboard-write; encrypted-media; fullscreen; picture-in-picture'
-      iframe.style.borderRadius = '12px'
-      iframe.style.display = 'block'
-      containerRef.current.appendChild(iframe)
-      setPlaying(true)
-    }
-  }
-
-  // The entire node area is an HTML div — this guarantees the click is a real DOM event,
-  // which is required for the browser to grant autoplay permission to the iframe.
   const handleNodeClick = (e: React.MouseEvent) => {
     e.stopPropagation()
     if (editMode) return
-    startPlayback()
     setSelectedNode(isSelected ? null : node.id)
   }
 
@@ -121,14 +155,18 @@ export function SpotifyNode({ node, isSelected, isDimmed, isOrbit, targetPositio
             </div>
           )}
 
-          {/* Iframe container — shown when playing and shouldShow */}
-          <div
-            ref={containerRef}
-            style={{ display: (shouldShow && playing) ? 'block' : 'none' }}
+          {/* Iframe container — shown when shouldShow */}
+          <div 
+            ref={wrapperRef} 
+            style={{ 
+              display: shouldShow ? 'block' : 'none',
+              borderRadius: '12px',
+              overflow: 'hidden'
+            }} 
           />
 
           {/* Green card — shown when not yet playing */}
-          {!playing && (
+          {!shouldShow && (
             <div style={{
               background: '#1DB954', borderRadius: '12px', padding: '14px 18px',
               display: 'flex', alignItems: 'center', gap: '12px',

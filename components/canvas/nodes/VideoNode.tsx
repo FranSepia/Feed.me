@@ -46,11 +46,13 @@ export function VideoNode({ node, isSelected, isDimmed, isOrbit, targetPosition 
   const bgColor = useCanvasStore((s) => s.bgColor)
   const light = isLightBg(bgColor)
   const [hovered, setHovered] = useState(false)
-  const meshRef = useRef<THREE.Mesh>(null)
-  const { camera } = useThree()
 
   const ytId = getYouTubeId(node.content)
   const isYT = !!ytId
+
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const meshRef = useRef<THREE.Mesh>(null)
+  const { camera } = useThree()
 
   // autoPlay = a related-tag node is selected (but not this one), same logic as orbit
   const autoPlay = !isSelected && !isDimmed && selectedNodeId !== null
@@ -64,12 +66,16 @@ export function VideoNode({ node, isSelected, isDimmed, isOrbit, targetPosition 
     config: { mass: 1.2, tension: 140, friction: 26 },
   })
 
-  // Local videos: signal page.tsx to show the modal player
+  // Autoplay local videos within the card
   useEffect(() => {
-    if (isSelected && !isYT) setPlayingVideoUrl(node.content)
-    else setPlayingVideoUrl(null)
-    return () => { setPlayingVideoUrl(null) }
-  }, [isSelected, isYT, node.content])
+    if (isYT || !videoRef.current) return
+    if (isSelected || autoPlay) {
+      videoRef.current.muted = !isSelected // Unmute if explicitly selected, else mute to allow autoplay without disrupting
+      videoRef.current.play().catch(() => {})
+    } else {
+      videoRef.current.pause()
+    }
+  }, [isSelected, autoPlay, isYT])
 
   useFrame(() => {
     if (meshRef.current) meshRef.current.quaternion.copy(camera.quaternion)
@@ -190,7 +196,7 @@ export function VideoNode({ node, isSelected, isDimmed, isOrbit, targetPosition 
               )}
             </div>
           ) : (
-            /* ── Local video thumbnail card ── */
+            /* ── Local video inline card ── */
             <div style={{
               width: `${W}px`, height: `${H}px`, borderRadius: '12px', overflow: 'hidden',
               background: 'rgba(0,0,0,0.6)', border: '1px solid rgba(255,255,255,0.1)',
@@ -198,22 +204,36 @@ export function VideoNode({ node, isSelected, isDimmed, isOrbit, targetPosition 
               position: 'relative',
               boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
             }}>
-              <div style={{
-                width: '52px', height: '52px', borderRadius: '50%',
-                background: 'rgba(255,255,255,0.18)', backdropFilter: 'blur(6px)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                border: '1.5px solid rgba(255,255,255,0.4)',
-              }}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
-                  <polygon points="5,3 19,12 5,21" />
-                </svg>
-              </div>
-              {node.title && (
-                <div style={{
-                  position: 'absolute', bottom: 0, left: 0, right: 0,
-                  background: 'linear-gradient(transparent, rgba(0,0,0,0.75))',
-                  padding: '24px 12px 10px', color: 'white', fontSize: '12px', fontWeight: 500,
-                }}>{node.title}</div>
+              <video
+                ref={videoRef}
+                src={`${node.content}#t=0.001`}
+                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                preload="metadata"
+                playsInline
+                loop
+                crossOrigin="anonymous"
+              />
+              {!isSelected && !autoPlay && (
+                <>
+                  <div style={{
+                    position: 'relative',
+                    width: '52px', height: '52px', borderRadius: '50%',
+                    background: 'rgba(255,255,255,0.18)', backdropFilter: 'blur(6px)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    border: '1.5px solid rgba(255,255,255,0.4)',
+                  }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
+                      <polygon points="5,3 19,12 5,21" />
+                    </svg>
+                  </div>
+                  {node.title && (
+                    <div style={{
+                      position: 'absolute', bottom: 0, left: 0, right: 0,
+                      background: 'linear-gradient(transparent, rgba(0,0,0,0.75))',
+                      padding: '24px 12px 10px', color: 'white', fontSize: '12px', fontWeight: 500,
+                    }}>{node.title}</div>
+                  )}
+                </>
               )}
             </div>
           )}
