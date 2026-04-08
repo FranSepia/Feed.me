@@ -122,6 +122,8 @@ export function BottomBar() {
   const [activeType, setActiveType] = useState<UploadType>(null)
   const [videoUrl, setVideoUrl] = useState('')
   const [videoTitle, setVideoTitle] = useState('')
+  const [videoCaption, setVideoCaption] = useState('')
+  const [videoDate, setVideoDate] = useState('')
   const [videoFile, setVideoFile] = useState<string | null>(null)
   const [videoFileName, setVideoFileName] = useState('')
   const videoFileInputRef = useRef<HTMLInputElement>(null)
@@ -254,8 +256,8 @@ export function BottomBar() {
           finalUrl = await uploadMedia(videoRawFileRef.current)
           videoRawFileRef.current = null
         }
-        await addNode({ type: 'video', content: finalUrl, title: videoTitle || videoFileName || 'Video', tags: tagList, seed: Math.random() })
-        setVideoUrl(''); setVideoTitle(''); setVideoFile(null); setVideoFileName('')
+        await addNode({ type: 'video', content: finalUrl, title: videoTitle || videoFileName || 'Video', caption: videoCaption || undefined, date: videoDate || undefined, tags: tagList, seed: Math.random() })
+        setVideoUrl(''); setVideoTitle(''); setVideoCaption(''); setVideoDate(''); setVideoFile(null); setVideoFileName('')
       }
     } catch (err) {
       console.error('Error adding node:', err)
@@ -499,7 +501,9 @@ export function BottomBar() {
                 <div style={{ flex: 1, height: '1px', background: 'rgba(0,0,0,0.08)' }} />
               </div>
               <input placeholder="https://youtube.com/watch?v=..." value={videoFile ? '' : videoUrl} onChange={(e) => { setVideoUrl(e.target.value); setVideoFile(null) }} style={inputStyle} />
-              <input placeholder="Title (optional)" value={videoTitle} onChange={(e) => setVideoTitle(e.target.value)} style={inputStyle} />
+              <input placeholder="Título (opcional)" value={videoTitle} onChange={(e) => setVideoTitle(e.target.value)} style={inputStyle} />
+              <input placeholder="Descripción (opcional)" value={videoCaption} onChange={(e) => setVideoCaption(e.target.value)} style={inputStyle} />
+              <input type="date" value={videoDate} onChange={(e) => setVideoDate(e.target.value)} style={{ ...inputStyle, colorScheme: 'light' }} />
             </div>
           )}
           {/* Tags input + existing tag suggestions */}

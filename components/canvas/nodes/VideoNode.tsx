@@ -1,6 +1,7 @@
 'use client'
 
 import { useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useFrame, useThree } from '@react-three/fiber'
 import { Html } from '@react-three/drei'
 import { useSpring, animated } from '@react-spring/three'
@@ -11,6 +12,13 @@ import { isLightBg } from '@/lib/colors'
 function getYouTubeId(url: string): string | null {
   const m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([a-zA-Z0-9_-]{11})/)
   return m ? m[1] : null
+}
+
+function formatDate(dateStr: string): string {
+  const [year, month, day] = dateStr.split('-').map(Number)
+  return new Date(year, month - 1, day).toLocaleDateString('es-MX', {
+    day: 'numeric', month: 'long', year: 'numeric',
+  })
 }
 
 interface Props {
@@ -35,8 +43,10 @@ export function VideoNode({ node, isSelected, isDimmed, isOrbit, targetPosition 
   const ytId = getYouTubeId(node.content)
   const isYT = !!ytId
 
-  // Auto-play when a related node is selected (same tag, not self)
   const autoPlay = !isSelected && !isDimmed && selectedNodeId !== null
+
+  const captionClr = light ? 'rgba(0,0,0,0.75)'  : 'rgba(255,255,255,0.88)'
+  const dateClr    = light ? 'rgba(0,0,0,0.45)'  : 'rgba(255,255,255,0.5)'
 
   const springs = useSpring({
     position: targetPosition,
@@ -55,38 +65,41 @@ export function VideoNode({ node, isSelected, isDimmed, isOrbit, targetPosition 
   }
 
   return (
-    <animated.mesh
-      ref={meshRef}
-      position={springs.position as unknown as [number,number,number]}
-      scale={springs.scale.to((s) => [s * 5.3, s * 3, 1] as [number,number,number])}
-      onClick={handleClick}
-      onPointerOver={(e: { stopPropagation: () => void }) => { e.stopPropagation(); setHovered(true) }}
-      onPointerOut={() => setHovered(false)}
-    >
-      <planeGeometry args={[1, 1]} />
-      <meshBasicMaterial transparent opacity={0} />
+    <>
+      <animated.mesh
+        ref={meshRef}
+        position={springs.position as unknown as [number,number,number]}
+        scale={springs.scale.to((s) => [s * 5.3, s * 3, 1] as [number,number,number])}
+        onClick={handleClick}
+        onPointerOver={(e: { stopPropagation: () => void }) => { e.stopPropagation(); setHovered(true) }}
+        onPointerOut={() => setHovered(false)}
+      >
+        <planeGeometry args={[1, 1]} />
+        <meshBasicMaterial transparent opacity={0} />
 
-      <Html center distanceFactor={10} zIndexRange={[50, 0]} style={{ pointerEvents: (isSelected || autoPlay) ? 'all' : 'none' }}>
-        <div style={{ position: 'relative', opacity: isDimmed ? 0.32 : 1, transition: 'opacity 0.4s' }}>
-          {isSelected && node.tags.length > 0 && (
-            <div style={{
-              position: 'absolute', bottom: '100%', left: 0,
-              display: 'flex', gap: '5px', flexWrap: 'nowrap', paddingBottom: '6px',
-            }}>
-              {node.tags.map((tag) => (
-                <span key={tag} style={{
-                  background: light ? 'rgba(255,255,255,0.75)' : 'rgba(20,20,20,0.65)',
-                  backdropFilter: 'blur(10px)',
-                  border: `1px solid ${light ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.25)'}`,
-                  color: light ? 'rgba(0,0,0,0.75)' : 'rgba(255,255,255,0.92)',
-                  fontSize: '11px', padding: '4px 11px', borderRadius: '20px', whiteSpace: 'nowrap',
-                }}>#{tag}</span>
-              ))}
-            </div>
-          )}
+        <Html center distanceFactor={10} zIndexRange={[50, 0]} style={{ pointerEvents: (isYT && (isSelected || autoPlay)) ? 'all' : 'none' }}>
+          <div style={{ position: 'relative', opacity: isDimmed ? 0.32 : 1, transition: 'opacity 0.4s' }}>
 
-          {(isSelected || autoPlay) ? (
-            isYT ? (
+            {/* Tags above card when selected */}
+            {isSelected && node.tags.length > 0 && (
+              <div style={{
+                position: 'absolute', bottom: '100%', left: 0,
+                display: 'flex', gap: '5px', flexWrap: 'nowrap', paddingBottom: '6px',
+              }}>
+                {node.tags.map((tag) => (
+                  <span key={tag} style={{
+                    background: light ? 'rgba(255,255,255,0.75)' : 'rgba(20,20,20,0.65)',
+                    backdropFilter: 'blur(10px)',
+                    border: `1px solid ${light ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.25)'}`,
+                    color: light ? 'rgba(0,0,0,0.75)' : 'rgba(255,255,255,0.92)',
+                    fontSize: '11px', padding: '4px 11px', borderRadius: '20px', whiteSpace: 'nowrap',
+                  }}>#{tag}</span>
+                ))}
+              </div>
+            )}
+
+            {/* YouTube embed when selected/autoplay */}
+            {isYT && (isSelected || autoPlay) ? (
               <iframe
                 width="480" height="270"
                 src={`https://www.youtube.com/embed/${ytId}?autoplay=1`}
@@ -94,55 +107,107 @@ export function VideoNode({ node, isSelected, isDimmed, isOrbit, targetPosition 
                 style={{ borderRadius: '12px', border: 'none', display: 'block' }}
               />
             ) : (
-              <video
-                src={node.content}
-                controls autoPlay
-                style={{ width: '480px', height: '270px', borderRadius: '12px', background: '#000', display: 'block' }}
-              />
-            )
-          ) : (
-            /* Thumbnail / preview card */
-            <div style={{
-              width: '280px', height: '158px', borderRadius: '12px', overflow: 'hidden',
-              background: 'rgba(0,0,0,0.6)', border: '1px solid rgba(255,255,255,0.1)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-              position: 'relative',
-            }}>
-              {isYT && (
-                <img
-                  src={`https://img.youtube.com/vi/${ytId}/mqdefault.jpg`}
-                  alt="thumbnail"
-                  style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
-                />
-              )}
+              /* Thumbnail card (always shown for local; shown when not playing for YT) */
               <div style={{
-                position: 'relative', zIndex: 1,
-                width: '48px', height: '48px', borderRadius: '50%',
-                background: 'rgba(255,255,255,0.18)', backdropFilter: 'blur(6px)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                width: '280px', borderRadius: '12px', overflow: 'hidden',
+                background: 'rgba(0,0,0,0.6)', border: '1px solid rgba(255,255,255,0.1)',
+                display: 'flex', flexDirection: 'column', cursor: 'pointer',
               }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="white">
-                  <polygon points="5,3 19,12 5,21" />
-                </svg>
-              </div>
-              {node.title && (
                 <div style={{
-                  position: 'absolute', bottom: 0, left: 0, right: 0,
-                  background: 'linear-gradient(transparent, rgba(0,0,0,0.7))',
-                  padding: '20px 12px 10px', color: 'white', fontSize: '12px', fontWeight: 500,
-                }}>{node.title}</div>
-              )}
-            </div>
-          )}
+                  height: '158px', position: 'relative',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}>
+                  {isYT && (
+                    <img
+                      src={`https://img.youtube.com/vi/${ytId}/mqdefault.jpg`}
+                      alt="thumbnail"
+                      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
+                  )}
+                  <div style={{
+                    position: 'relative', zIndex: 1,
+                    width: '48px', height: '48px', borderRadius: '50%',
+                    background: 'rgba(255,255,255,0.18)', backdropFilter: 'blur(6px)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="white">
+                      <polygon points="5,3 19,12 5,21" />
+                    </svg>
+                  </div>
+                  {node.title && (
+                    <div style={{
+                      position: 'absolute', bottom: 0, left: 0, right: 0,
+                      background: 'linear-gradient(transparent, rgba(0,0,0,0.7))',
+                      padding: '20px 12px 10px', color: 'white', fontSize: '12px', fontWeight: 500,
+                    }}>{node.title}</div>
+                  )}
+                </div>
+              </div>
+            )}
 
-          {editMode && (
-            <div style={{ position: 'absolute', top: '-8px', right: '-8px', pointerEvents: 'all' }}>
-              <DeleteButton onDelete={() => removeNode(node.id)} />
-            </div>
-          )}
-        </div>
-      </Html>
-    </animated.mesh>
+            {/* Caption + date below the card */}
+            {(node.caption || node.date) && (
+              <div style={{
+                paddingTop: '4px', width: '280px',
+                display: 'flex', flexDirection: 'column', gap: '1px',
+                opacity: isDimmed ? 0.1 : 1, transition: 'opacity 0.4s',
+                pointerEvents: 'none',
+              }}>
+                {node.caption && (
+                  <span style={{ color: captionClr, fontSize: '12px', lineHeight: 1.4, fontStyle: 'italic' }}>
+                    {node.caption}
+                  </span>
+                )}
+                {node.date && (
+                  <span style={{ color: dateClr, fontSize: '10px', fontStyle: 'italic', letterSpacing: '0.03em' }}>
+                    {formatDate(node.date)}
+                  </span>
+                )}
+              </div>
+            )}
+
+            {editMode && (
+              <div style={{ position: 'absolute', top: '-8px', right: '-8px', pointerEvents: 'all' }}>
+                <DeleteButton onDelete={() => removeNode(node.id)} />
+              </div>
+            )}
+          </div>
+        </Html>
+      </animated.mesh>
+
+      {/* Local video modal — rendered directly to body to avoid THREE.js canvas z-index issues */}
+      {isSelected && !isYT && typeof document !== 'undefined' && createPortal(
+        <div
+          onClick={() => setSelectedNode(null)}
+          style={{
+            position: 'fixed', inset: 0, zIndex: 400,
+            background: 'rgba(0,0,0,0.72)', backdropFilter: 'blur(6px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+        >
+          <div onClick={(e) => e.stopPropagation()} style={{ position: 'relative', borderRadius: '16px', overflow: 'hidden' }}>
+            <video
+              src={node.content}
+              controls
+              autoPlay
+              style={{ display: 'block', maxWidth: '90vw', maxHeight: '80vh', borderRadius: '16px' }}
+            />
+            <button
+              onClick={() => setSelectedNode(null)}
+              style={{
+                position: 'absolute', top: '10px', right: '10px',
+                width: '32px', height: '32px', borderRadius: '50%',
+                background: 'rgba(0,0,0,0.6)', border: '1px solid rgba(255,255,255,0.3)',
+                color: 'white', fontSize: '16px', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                lineHeight: 1,
+              }}
+            >✕</button>
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
   )
 }
 
