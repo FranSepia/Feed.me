@@ -6,6 +6,7 @@ import { BottomBar } from '@/components/ui/BottomBar'
 import { ProfilePanel } from '@/components/ui/ProfilePanel'
 import { EditModeButton } from '@/components/ui/EditModeButton'
 import { ProfileButton } from '@/components/ui/ProfileButton'
+import { FilterButton } from '@/components/ui/FilterButton'
 import { useCanvasStore } from '@/lib/store'
 
 export default function Home() {
@@ -21,6 +22,7 @@ export default function Home() {
     <main className="w-full h-screen relative" style={{ background: '#0a0a0a' }}>
       <Canvas3D />
       <BottomBar />
+      <FilterButton />
       <EditModeButton />
       <ProfileButton />
       <ProfilePanel />

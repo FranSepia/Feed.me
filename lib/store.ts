@@ -117,8 +117,10 @@ interface CanvasStore {
   editMode: boolean
   socials: Record<string, string>
   nodesLoaded: boolean
+  filterTags: string[]
   setSelectedNode: (id: string | null) => void
   setPlayingVideoUrl: (url: string | null) => void
+  setFilterTags: (tags: string[]) => void
   setBgColor: (color: string) => void
   setShowProfilePanel: (show: boolean) => void
   setEditMode: (v: boolean) => void
@@ -137,9 +139,11 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   editMode: false,
   socials: {},
   nodesLoaded: false,
+  filterTags: [],
 
   setSelectedNode: (id) => set({ selectedNode: id }),
   setPlayingVideoUrl: (url) => set({ playingVideoUrl: url }),
+  setFilterTags: (tags) => set({ filterTags: tags }),
   setBgColor: (color) => set({ bgColor: color }),
   setShowProfilePanel: (show) => set({ showProfilePanel: show }),
   setEditMode: (v) => set({ editMode: v }),

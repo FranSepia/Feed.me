@@ -16,7 +16,8 @@ function seededRandom(seed: number) {
   return x - Math.floor(x)
 }
 
-function computeTargetPositions(
+// Orbit layout when a node is selected
+function computeOrbitPositions(
   nodes: NodeData[],
   selectedId: string | null
 ): Record<string, [number, number, number]> {
@@ -40,22 +41,15 @@ function computeTargetPositions(
   const circumR  = (n * nodeWidth * 1.5) / (2 * Math.PI)
   const R        = Math.max(minR, circumR)
 
-  // Ellipse radii — on mobile: moderately narrower in X, taller in Y
-  // Not too extreme so nodes still appear "around" not "above/below only"
   const Rx = isMobile ? R * 0.60 : R
   const Ry = isMobile ? R * 1.20 : R * 0.52
-
-  // Jitter amount — adds organic randomness so nodes don't fall on a perfect ellipse line
   const jitterX = isMobile ? R * 0.28 : R * 0.18
   const jitterY = isMobile ? R * 0.22 : R * 0.14
 
   related.forEach((node, i) => {
     const angle = (i / Math.max(n, 1)) * Math.PI * 2 - Math.PI / 2
-
-    // Seeded jitter so positions are deterministic but look random
     const jx = (seededRandom(node.seed * 5 + 1) - 0.5) * 2 * jitterX
     const jy = (seededRandom(node.seed * 7 + 3) - 0.5) * 2 * jitterY
-
     result[node.id] = [
       sel.position[0] + Math.cos(angle) * Rx + jx,
       sel.position[1] + Math.sin(angle) * Ry + jy,
@@ -76,13 +70,51 @@ function computeTargetPositions(
   return result
 }
 
+// Perimeter layout when filter tags are active (no selection)
+// Desktop: left column stacking downward
+// Mobile: top row stacking rightward
+function computePerimeterPositions(
+  nodes: NodeData[],
+  filterTags: string[]
+): Record<string, [number, number, number]> {
+  const matching = nodes.filter((n) => n.tags.some((t) => filterTags.includes(t)))
+  const result: Record<string, [number, number, number]> = {}
+  const spacing = 6.5
+
+  if (!isMobile) {
+    // Left column: x fixed to left, y decreases downward
+    const x = -16
+    const startY = 9
+    matching.forEach((node, i) => {
+      result[node.id] = [x, startY - i * spacing, 0]
+    })
+  } else {
+    // Top row: y fixed to top, x increases rightward
+    const y = 16
+    const startX = -10
+    matching.forEach((node, i) => {
+      result[node.id] = [startX + i * spacing, y, 0]
+    })
+  }
+
+  return result
+}
+
 export function Scene() {
   const nodes = useCanvasStore((s) => s.nodes)
   const selectedNode = useCanvasStore((s) => s.selectedNode)
+  const filterTags = useCanvasStore((s) => s.filterTags)
 
-  const targetPositions = useMemo(
-    () => computeTargetPositions(nodes, selectedNode),
+  const filterActive = filterTags.length > 0
+
+  const orbitPositions = useMemo(
+    () => computeOrbitPositions(nodes, selectedNode),
     [nodes, selectedNode]
+  )
+
+  const perimeterPositions = useMemo(
+    () => filterActive && !selectedNode ? computePerimeterPositions(nodes, filterTags) : {},
+    [nodes, filterTags, filterActive, selectedNode]
   )
 
   const sorted = [...nodes].sort((a, b) =>
@@ -94,12 +126,28 @@ export function Scene() {
       <CameraControls />
       {sorted.map((node) => {
         const isSelected = selectedNode === node.id
+
+        // Orbit/dim logic (when something is selected)
         const isRelated = selectedNode
           ? nodes.find((n) => n.id === selectedNode)?.tags.some((t) => node.tags.includes(t)) ?? false
           : true
-        const isDimmed = selectedNode !== null && !isSelected && !isRelated
-        const targetPosition = targetPositions[node.id] ?? node.position
+        const orbitDimmed = selectedNode !== null && !isSelected && !isRelated
+
+        // Filter logic (when filter is active and nothing is selected)
+        const matchesFilter = filterActive
+          ? node.tags.some((t) => filterTags.includes(t))
+          : true
+        const filterDimmed = filterActive && !selectedNode && !matchesFilter
+
+        const isDimmed = orbitDimmed || filterDimmed
         const isOrbit = !isSelected && selectedNode !== null && isRelated
+
+        // Priority: orbit positions > perimeter positions > default position
+        const targetPosition =
+          orbitPositions[node.id] ??
+          perimeterPositions[node.id] ??
+          node.position
+
         const props = { key: node.id, node, isSelected, isDimmed, isOrbit, targetPosition }
 
         if (node.type === 'image')   return <ImageNode   {...props} />
