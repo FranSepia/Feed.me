@@ -20,7 +20,7 @@ export function EditModeButton() {
         position: 'fixed',
         bottom: isMobile ? '21px' : '29px',
         left: '24px',
-        zIndex: 100,
+        zIndex: 500,
         width: '44px',
         height: '44px',
         borderRadius: '50%',

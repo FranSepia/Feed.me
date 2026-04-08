@@ -66,7 +66,7 @@ export function VideoNode({ node, isSelected, isDimmed, isOrbit, targetPosition 
       <planeGeometry args={[1, 1]} />
       <meshBasicMaterial transparent opacity={0} />
 
-      <Html center distanceFactor={10} style={{ pointerEvents: (isSelected || autoPlay) ? 'all' : 'none' }}>
+      <Html center distanceFactor={10} zIndexRange={[50, 0]} style={{ pointerEvents: (isSelected || autoPlay) ? 'all' : 'none' }}>
         <div style={{ position: 'relative', opacity: isDimmed ? 0.32 : 1, transition: 'opacity 0.4s' }}>
           {isSelected && node.tags.length > 0 && (
             <div style={{

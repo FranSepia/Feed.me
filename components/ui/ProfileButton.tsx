@@ -19,7 +19,7 @@ export function ProfileButton() {
         position: 'fixed',
         bottom: isMobile ? '21px' : '29px',
         right: '24px',
-        zIndex: 100,
+        zIndex: 500,
         width: '44px',
         height: '44px',
         borderRadius: '50%',

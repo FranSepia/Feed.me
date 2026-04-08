@@ -152,6 +152,7 @@ export function ImageNode({ node, isSelected, isDimmed, isOrbit, targetPosition 
       {editMode && (
         <Html
           position={[0.5, 0.5, 0.01]}
+          zIndexRange={[50, 0]}
           style={{ pointerEvents: 'all', transform: 'translate(-100%, -100%)' }}
         >
           <DeleteButton onDelete={() => removeNode(node.id)} />

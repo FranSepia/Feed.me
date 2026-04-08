@@ -269,13 +269,21 @@ export function BottomBar() {
   }
 
   return (
+    <>
+    {/* Backdrop — click outside the panel to close it */}
+    {activeType && (
+      <div
+        onClick={() => setActiveType(null)}
+        style={{ position: 'fixed', inset: 0, zIndex: 499 }}
+      />
+    )}
     <div
       style={{
         position: 'fixed',
         bottom: isMobile ? '16px' : '24px',
         left: '50%',
         transform: 'translateX(-50%)',
-        zIndex: 100,
+        zIndex: 500,
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
@@ -596,6 +604,7 @@ export function BottomBar() {
         />
       </div>
     </div>
+    </>
   )
 }
 

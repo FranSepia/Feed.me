@@ -89,7 +89,7 @@ export function SpotifyNode({ node, isSelected, isDimmed, isOrbit, targetPositio
     >
       <planeGeometry args={[1, 1]} />
       <meshBasicMaterial transparent opacity={0} />
-      <Html center distanceFactor={10} style={{ pointerEvents: 'all' }}>
+      <Html center distanceFactor={10} zIndexRange={[50, 0]} style={{ pointerEvents: 'all' }}>
         {/* Outer div covers the full node area — every click is a DOM event (required for autoplay) */}
         <div
           onClick={handleNodeClick}
