@@ -120,7 +120,7 @@ interface CanvasStore {
   setBgColor: (color: string) => void
   setShowProfilePanel: (show: boolean) => void
   setEditMode: (v: boolean) => void
-  setSocial: (platform: string, url: string) => void
+  setSocial: (platform: string, url: string) => Promise<void>
   addNode: (node: Omit<NodeData, 'id' | 'position'>) => Promise<void>
   removeNode: (id: string) => Promise<void>
   loadFromSupabase: () => Promise<void>
@@ -174,7 +174,10 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
           // Assign fresh screen-aware positions every page load
           const positions = layoutPositions(loaded.length)
           const withPos = loaded.map((n, i) => ({ ...n, position: positions[i] }))
-          set({ nodes: withPos, nodesLoaded: true })
+          // Rebuild socials map from saved social nodes
+          const socials: Record<string, string> = {}
+          withPos.forEach((n) => { if (n.type === 'social' && n.title) socials[n.title] = n.content })
+          set({ nodes: withPos, socials, nodesLoaded: true })
         } else {
           set({ nodesLoaded: true })
         }
@@ -254,7 +257,8 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     }
   },
 
-  setSocial: (platform, url) =>
+  setSocial: async (platform, url) => {
+    const nodeId = `social-${platform}`
     set((state) => {
       const nodes = state.nodes.filter(
         (n) => !(n.type === 'social' && n.title === platform)
@@ -272,7 +276,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
           Math.sin(angle * 0.6) * 5,
         ]
         nodes.push({
-          id: `social-${platform}`,
+          id: nodeId,
           type: 'social',
           content: url,
           title: platform,
@@ -284,5 +288,30 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
         delete newSocials[platform]
       }
       return { socials: newSocials, nodes }
-    }),
+    })
+    // Persist to Supabase
+    const db = supabase
+    if (db) {
+      try {
+        if (url.trim()) {
+          const { error } = await db.from('canvas_nodes').upsert({
+            id: nodeId,
+            session_id: getSessionId(),
+            type: 'social',
+            content: url,
+            title: platform,
+            tags: ['social', platform],
+            position: [0, 0, 0],
+            seed: 0,
+          })
+          if (error) console.error('Supabase upsert social error:', error)
+        } else {
+          const { error } = await db.from('canvas_nodes').delete().eq('id', nodeId)
+          if (error) console.error('Supabase delete social error:', error)
+        }
+      } catch (e) {
+        console.error('Failed to save social:', e)
+      }
+    }
+  },
 }))

@@ -18,7 +18,7 @@ export function EditModeButton() {
       title={editMode ? 'Exit edit mode' : 'Edit mode'}
       style={{
         position: 'fixed',
-        bottom: isMobile ? '16px' : '24px',
+        bottom: isMobile ? '21px' : '29px',
         left: '24px',
         zIndex: 100,
         width: '44px',
