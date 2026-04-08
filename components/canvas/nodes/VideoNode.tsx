@@ -9,8 +9,17 @@ import { NodeData, useCanvasStore } from '@/lib/store'
 import { isLightBg } from '@/lib/colors'
 
 function getYouTubeId(url: string): string | null {
-  const m = url.match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([a-zA-Z0-9_-]{11})/)
-  return m ? m[1] : null
+  const patterns = [
+    /[?&]v=([a-zA-Z0-9_-]{11})/,
+    /youtu\.be\/([a-zA-Z0-9_-]{11})/,
+    /embed\/([a-zA-Z0-9_-]{11})/,
+    /shorts\/([a-zA-Z0-9_-]{11})/,
+  ]
+  for (const p of patterns) {
+    const m = url.match(p)
+    if (m) return m[1]
+  }
+  return null
 }
 
 function formatDate(dateStr: string): string {
@@ -92,7 +101,7 @@ export function VideoNode({ node, isSelected, isDimmed, isOrbit, targetPosition 
         center
         distanceFactor={10}
         zIndexRange={[50, 0]}
-        style={{ pointerEvents: isSelected ? 'all' : 'none' }}
+        style={{ pointerEvents: (isSelected || autoPlay) ? 'all' : 'none' }}
       >
         <div style={{ opacity: isDimmed ? 0.32 : 1, transition: 'opacity 0.4s', position: 'relative' }}>
 
@@ -116,36 +125,46 @@ export function VideoNode({ node, isSelected, isDimmed, isOrbit, targetPosition 
           )}
 
           {isYT ? (
-            /* ── YouTube card: fixed size, thumbnail always visible ── */
+            /* ── YouTube card ── */
             <div style={{
               width: `${W}px`, height: `${H}px`,
               borderRadius: '12px', overflow: 'hidden',
               position: 'relative', cursor: 'pointer',
+              background: '#000',
               boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
             }}>
-              {/* Thumbnail always in the background */}
+              {/* Thumbnail — always visible as background; mqdefault (320×180) is the most reliable size */}
               <img
-                src={`https://img.youtube.com/vi/${ytId}/hqdefault.jpg`}
+                src={`https://img.youtube.com/vi/${ytId}/mqdefault.jpg`}
                 alt="thumbnail"
-                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
               />
 
-              {(isSelected || autoPlay) ? (
-                /* Iframe overlaid exactly on the thumbnail — same size, no jump */
+              {(isSelected || autoPlay) && (
+                /* iframe overlaid on top — same 320×180, no jump.
+                   When user clicks directly (isSelected): autoplay with sound.
+                   When triggered by related tag (autoPlay only): mute=1 so browser allows autoplay. */
                 <iframe
-                  width={W} height={H}
-                  src={`https://www.youtube.com/embed/${ytId}?autoplay=1&rel=0&modestbranding=1&playsinline=1`}
+                  key={isSelected ? 'selected' : 'autoplay'}
+                  src={
+                    isSelected
+                      ? `https://www.youtube.com/embed/${ytId}?autoplay=1&rel=0&modestbranding=1&playsinline=1`
+                      : `https://www.youtube.com/embed/${ytId}?autoplay=1&mute=1&rel=0&modestbranding=1&playsinline=1`
+                  }
                   allow="autoplay; fullscreen; picture-in-picture"
                   allowFullScreen
                   style={{
-                    position: 'absolute', inset: 0, width: '100%', height: '100%',
+                    position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
                     border: 'none', display: 'block',
                   }}
                 />
-              ) : (
-                /* Play button overlay */
+              )}
+
+              {/* Play button shown only when not playing */}
+              {!isSelected && !autoPlay && (
                 <div style={{
-                  position: 'absolute', inset: 0,
+                  position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   background: 'rgba(0,0,0,0.18)',
                 }}>
