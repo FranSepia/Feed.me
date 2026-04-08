@@ -70,32 +70,45 @@ function computeOrbitPositions(
   return result
 }
 
-// Perimeter layout when filter tags are active (no selection)
-// Desktop: left column stacking downward
-// Mobile: top row stacking rightward
+// Perimeter layout when filter tags are active (no selection).
+// Uses golden-angle spiral + jitter so it looks organic, not a straight line.
+// Desktop: cluster on the left half. Mobile: cluster on the top half.
 function computePerimeterPositions(
   nodes: NodeData[],
   filterTags: string[]
 ): Record<string, [number, number, number]> {
   const matching = nodes.filter((n) => n.tags.some((t) => filterTags.includes(t)))
   const result: Record<string, [number, number, number]> = {}
-  const spacing = 6.5
+  if (matching.length === 0) return result
 
-  if (!isMobile) {
-    // Left column: x fixed to left, y decreases downward
-    const x = -16
-    const startY = 9
-    matching.forEach((node, i) => {
-      result[node.id] = [x, startY - i * spacing, 0]
-    })
-  } else {
-    // Top row: y fixed to top, x increases rightward
-    const y = 16
-    const startX = -10
-    matching.forEach((node, i) => {
-      result[node.id] = [startX + i * spacing, y, 0]
-    })
-  }
+  const golden = Math.PI * (3 - Math.sqrt(5))
+  const count  = matching.length
+  // Spread radius grows with number of nodes
+  const spread = Math.sqrt(count) * 2.8 + 4
+
+  matching.forEach((node, i) => {
+    const angle = i * golden
+    const r     = Math.sqrt((i + 0.5) / count) * spread
+    // seeded jitter so layout is stable across re-renders
+    const jx = (seededRandom(node.seed * 3 + 7) - 0.5) * spread * 0.35
+    const jy = (seededRandom(node.seed * 5 + 2) - 0.5) * spread * 0.35
+
+    if (!isMobile) {
+      // Desktop: centre the cluster on the left side (cx=-13)
+      result[node.id] = [
+        -13 + Math.cos(angle) * r * 0.55 + jx,
+         0  + Math.sin(angle) * r        + jy,
+        (seededRandom(node.seed + 1) - 0.5) * 6,
+      ]
+    } else {
+      // Mobile: centre the cluster at the top (cy=14)
+      result[node.id] = [
+         0  + Math.cos(angle) * r        + jx,
+        14  + Math.sin(angle) * r * 0.45 + jy,
+        (seededRandom(node.seed + 1) - 0.5) * 6,
+      ]
+    }
+  })
 
   return result
 }
