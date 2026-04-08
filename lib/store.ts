@@ -136,17 +136,28 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       if (error) { console.error('Supabase load error:', error); return }
 
       if (data && data.length > 0) {
-        const loaded: NodeData[] = data.map((row) => ({
-          id: row.id,
-          type: row.type,
-          content: row.content,
-          title: row.title ?? undefined,
-          caption: row.caption ?? undefined,
-          tags: row.tags ?? [],
-          position: row.position as [number, number, number],
-          seed: row.seed ?? 0,
-        }))
-        set({ nodes: loaded, nodesLoaded: true })
+        const loaded: NodeData[] = data
+          .filter((row) => row.id && row.type && row.content) // skip corrupted rows
+          .map((row) => {
+            // Validate position — bad position data crashes Three.js
+            const rawPos = row.position
+            const pos: [number, number, number] =
+              Array.isArray(rawPos) && rawPos.length >= 3 &&
+              rawPos.every((v: unknown) => typeof v === 'number' && isFinite(v))
+                ? [rawPos[0], rawPos[1], rawPos[2]]
+                : [0, 0, 0]
+            return {
+              id: row.id,
+              type: row.type,
+              content: row.content,
+              title: row.title ?? undefined,
+              caption: row.caption ?? undefined,
+              tags: Array.isArray(row.tags) ? row.tags : [],
+              position: pos,
+              seed: typeof row.seed === 'number' ? row.seed : 0,
+            }
+          })
+        set({ nodes: loaded.length > 0 ? loaded : get().nodes, nodesLoaded: true })
       } else {
         // New user — keep demo nodes, mark as loaded
         set({ nodesLoaded: true })

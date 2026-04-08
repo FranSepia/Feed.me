@@ -229,9 +229,14 @@ export function BottomBar() {
 
       } else if (activeType === 'image' && imageUrl) {
         let finalUrl = imageUrl
-        // If user selected a local file, upload it to Supabase Storage
+        // If user selected a local file, try uploading to Supabase Storage
         if (imageFileRef.current) {
-          finalUrl = await uploadMedia(imageFileRef.current)
+          try {
+            finalUrl = await uploadMedia(imageFileRef.current)
+          } catch (uploadErr) {
+            console.warn('Storage upload failed, using local URL for this session:', uploadErr)
+            // Keep the local blob URL — node will show in this session but won't persist across devices
+          }
           imageFileRef.current = null
         }
         await addNode({ type: 'image', content: finalUrl, title: imageName || 'Image', caption: imageCaption || undefined, date: imageDate || undefined, tags: tagList, seed: Math.random() })
