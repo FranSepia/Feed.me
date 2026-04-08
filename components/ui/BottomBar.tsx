@@ -3,6 +3,8 @@
 import { useState, useRef, useCallback } from 'react'
 import { useCanvasStore } from '@/lib/store'
 import { useResponsive } from '@/lib/useResponsive'
+import { supabase } from '@/lib/supabase'
+import { getSessionId } from '@/lib/sessionId'
 
 type UploadType = 'image' | 'video' | 'text' | 'spotify' | null
 
@@ -136,7 +138,10 @@ export function BottomBar() {
   const [imageCaption, setImageCaption] = useState('')
   const [imageDate, setImageDate] = useState('')
   const [isDragOver, setIsDragOver] = useState(false)
+  const [uploading, setUploading] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const imageFileRef = useRef<File | null>(null)
+  const videoRawFileRef = useRef<File | null>(null)
   const addNode = useCanvasStore((s) => s.addNode)
   const nodes = useCanvasStore((s) => s.nodes)
   const { isMobile } = useResponsive()
@@ -144,8 +149,23 @@ export function BottomBar() {
   // All unique tags already in the canvas
   const existingTags = Array.from(new Set(nodes.flatMap((n) => n.tags))).sort()
 
+  // Upload a file to Supabase Storage and return its public URL
+  const uploadMedia = async (file: File): Promise<string> => {
+    const sessionId = getSessionId()
+    const ext = file.name.split('.').pop() ?? 'bin'
+    const path = `${sessionId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+    const { error } = await supabase.storage.from('media').upload(path, file, {
+      cacheControl: '31536000',
+      upsert: false,
+    })
+    if (error) throw error
+    const { data } = supabase.storage.from('media').getPublicUrl(path)
+    return data.publicUrl
+  }
+
   const handleFileSelect = useCallback((file: File) => {
     if (!file.type.startsWith('image/')) return
+    imageFileRef.current = file
     const objectUrl = URL.createObjectURL(file)
     setImagePreview(objectUrl)
     setImageUrl(objectUrl)
@@ -196,31 +216,45 @@ export function BottomBar() {
     }
   }
 
-  const handleAdd = () => {
+  const handleAdd = async () => {
     const tagList = tags.split(',').map((t) => t.trim()).filter(Boolean)
+    setUploading(true)
 
-    if (activeType === 'text' && textContent) {
-      addNode({ type: 'text', content: textContent, title: textTitle, tags: tagList, seed: Math.random() })
-      setTextContent('')
-      setTextTitle('')
-    } else if (activeType === 'image' && imageUrl) {
-      addNode({ type: 'image', content: imageUrl, title: imageName || 'Image', caption: imageCaption || undefined, date: imageDate || undefined, tags: tagList, seed: Math.random() })
-      setImagePreview(null)
-      setImageName('')
-      setImageUrl('')
-      setImageCaption('')
-      setImageDate('')
-    } else if (activeType === 'spotify' && spotifyTrackId) {
-      addNode({ type: 'spotify', content: spotifyTrackId, title: spotifyTitle || 'Track', tags: tagList, seed: Math.random() })
-      setSpotifyUrl('')
-      setSpotifyTrackId('')
-      setSpotifyTitle('')
-    } else if (activeType === 'video' && (videoUrl || videoFile)) {
-      addNode({ type: 'video', content: videoFile || videoUrl, title: videoTitle || videoFileName || 'Video', tags: tagList, seed: Math.random() })
-      setVideoUrl('')
-      setVideoTitle('')
-      setVideoFile(null)
-      setVideoFileName('')
+    try {
+      if (activeType === 'text' && textContent) {
+        await addNode({ type: 'text', content: textContent, title: textTitle, tags: tagList, seed: Math.random() })
+        setTextContent(''); setTextTitle('')
+
+      } else if (activeType === 'image' && imageUrl) {
+        let finalUrl = imageUrl
+        // If user selected a local file, upload it to Supabase Storage
+        if (imageFileRef.current) {
+          finalUrl = await uploadMedia(imageFileRef.current)
+          imageFileRef.current = null
+        }
+        await addNode({ type: 'image', content: finalUrl, title: imageName || 'Image', caption: imageCaption || undefined, date: imageDate || undefined, tags: tagList, seed: Math.random() })
+        if (imagePreview?.startsWith('blob:')) URL.revokeObjectURL(imagePreview)
+        setImagePreview(null); setImageName(''); setImageUrl(''); setImageCaption(''); setImageDate('')
+
+      } else if (activeType === 'spotify' && spotifyTrackId) {
+        await addNode({ type: 'spotify', content: spotifyTrackId, title: spotifyTitle || 'Track', tags: tagList, seed: Math.random() })
+        setSpotifyUrl(''); setSpotifyTrackId(''); setSpotifyTitle('')
+
+      } else if (activeType === 'video' && (videoUrl || videoFile || videoRawFileRef.current)) {
+        let finalUrl = videoUrl || videoFile || ''
+        // If user selected a local video file, upload it to Supabase Storage
+        if (videoRawFileRef.current) {
+          finalUrl = await uploadMedia(videoRawFileRef.current)
+          videoRawFileRef.current = null
+        }
+        await addNode({ type: 'video', content: finalUrl, title: videoTitle || videoFileName || 'Video', tags: tagList, seed: Math.random() })
+        setVideoUrl(''); setVideoTitle(''); setVideoFile(null); setVideoFileName('')
+      }
+    } catch (err) {
+      console.error('Error adding node:', err)
+      alert('Error al subir el archivo. Verifica tu conexión e inténtalo de nuevo.')
+    } finally {
+      setUploading(false)
     }
 
     setTags('')
@@ -421,6 +455,7 @@ export function BottomBar() {
                 onChange={(e) => {
                   const f = e.target.files?.[0]
                   if (!f) return
+                  videoRawFileRef.current = f
                   setVideoFile(URL.createObjectURL(f))
                   setVideoFileName(f.name)
                 }}
@@ -496,7 +531,7 @@ export function BottomBar() {
             )}
           </div>
           <div style={{ display: 'flex', gap: '8px' }}>
-            <AquaButton icon={null} label="Add to canvas" active themeKey={activeType ?? 'default'} onClick={handleAdd} />
+            <AquaButton icon={uploading ? <Spinner /> : null} label={uploading ? 'Subiendo...' : 'Add to canvas'} active themeKey={activeType ?? 'default'} onClick={uploading ? () => {} : handleAdd} />
             <AquaButton icon={null} label="Cancel" active={false} themeKey="default" onClick={() => setActiveType(null)} />
           </div>
         </div>
@@ -554,6 +589,16 @@ export function BottomBar() {
         />
       </div>
     </div>
+  )
+}
+
+function Spinner() {
+  return (
+    <div style={{
+      width: '14px', height: '14px', border: '2px solid rgba(50,54,78,0.25)',
+      borderTopColor: 'rgba(50,54,78,0.8)', borderRadius: '50%',
+      animation: 'spin 0.7s linear infinite', flexShrink: 0,
+    }} />
   )
 }
 
