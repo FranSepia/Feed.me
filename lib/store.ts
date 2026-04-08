@@ -42,6 +42,28 @@ export function generatePositions(count: number): [number, number, number][] {
   })
 }
 
+// Screen-aware oval layout — randomized each page load.
+// Landscape screen → wider horizontal oval. Portrait → taller vertical oval.
+function layoutPositions(count: number): [number, number, number][] {
+  const aspect = typeof window !== 'undefined'
+    ? window.innerWidth / window.innerHeight
+    : 1.6
+  const base   = Math.sqrt(count) * 3.2 + 6
+  const Rx     = aspect >= 1 ? base * Math.min(aspect, 2.2) * 0.68 : base * 0.68
+  const Ry     = aspect >= 1 ? base * 0.44                          : base * Math.min(1 / aspect, 2.2) * 0.55
+  const golden = Math.PI * (3 - Math.sqrt(5))
+  const rot    = Math.random() * Math.PI * 2
+  return Array.from({ length: count }, (_, i) => {
+    const angle = i * golden + rot
+    const r     = Math.sqrt((i + 0.5) / Math.max(count, 1))
+    return [
+      Math.cos(angle) * Rx * r + (Math.random() - 0.5) * Rx * 0.30,
+      Math.sin(angle) * Ry * r + (Math.random() - 0.5) * Ry * 0.30,
+      (Math.random() - 0.5) * 8,
+    ] as [number, number, number]
+  })
+}
+
 // Demo nodes shown to first-time visitors (never saved to Supabase)
 const DEMO_IMAGES = [
   'https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=800',
@@ -138,29 +160,29 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       if (data && data.length > 0) {
         const loaded: NodeData[] = data
           .filter((row) => row.id && row.type && row.content) // skip corrupted rows
-          .map((row) => {
-            // Validate position — bad position data crashes Three.js
-            const rawPos = row.position
-            const pos: [number, number, number] =
-              Array.isArray(rawPos) && rawPos.length >= 3 &&
-              rawPos.every((v: unknown) => typeof v === 'number' && isFinite(v))
-                ? [rawPos[0], rawPos[1], rawPos[2]]
-                : [0, 0, 0]
-            return {
-              id: row.id,
-              type: row.type,
-              content: row.content,
-              title: row.title ?? undefined,
-              caption: row.caption ?? undefined,
-              tags: Array.isArray(row.tags) ? row.tags : [],
-              position: pos,
-              seed: typeof row.seed === 'number' ? row.seed : 0,
-            }
-          })
-        set({ nodes: loaded.length > 0 ? loaded : get().nodes, nodesLoaded: true })
+          .map((row) => ({
+            id: row.id,
+            type: row.type,
+            content: row.content,
+            title: row.title ?? undefined,
+            caption: row.caption ?? undefined,
+            tags: Array.isArray(row.tags) ? row.tags : [],
+            position: [0, 0, 0] as [number, number, number], // replaced below
+            seed: typeof row.seed === 'number' ? row.seed : 0,
+          }))
+        if (loaded.length > 0) {
+          // Assign fresh screen-aware positions every page load
+          const positions = layoutPositions(loaded.length)
+          const withPos = loaded.map((n, i) => ({ ...n, position: positions[i] }))
+          set({ nodes: withPos, nodesLoaded: true })
+        } else {
+          set({ nodesLoaded: true })
+        }
       } else {
-        // New user — keep demo nodes, mark as loaded
-        set({ nodesLoaded: true })
+        // New user — reposition demo nodes for this screen
+        const positions = layoutPositions(DEMO_NODES.length)
+        const demo = DEMO_NODES.map((n, i) => ({ ...n, position: positions[i] }))
+        set({ nodes: demo, nodesLoaded: true })
       }
     } catch (e) {
       console.error('Failed to load from Supabase:', e)
