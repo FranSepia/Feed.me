@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useCanvasStore, SOCIAL_PLATFORMS } from '@/lib/store'
 import { useResponsive } from '@/lib/useResponsive'
 import { useAuth } from '@/lib/auth-context'
@@ -25,6 +25,12 @@ export function ProfilePanel() {
   const readOnly = useCanvasStore((s) => s.readOnly)
   const [activeTab, setActiveTab] = useState<Tab>('profile')
   const [avatarUploading, setAvatarUploading] = useState(false)
+  const [localSocials, setLocalSocials] = useState<Record<string, string>>(socials)
+  const [socialsSaving, setSocialsSaving] = useState(false)
+  const [socialsSaved, setSocialsSaved] = useState(false)
+
+  // Sync local inputs when store socials load (e.g. after page refresh)
+  useEffect(() => { setLocalSocials(socials) }, [socials])
   const avatarInputRef = useRef<HTMLInputElement>(null)
   const { isMobile } = useResponsive()
   const { user, profile, signOut, refreshProfile } = useAuth()
@@ -285,15 +291,43 @@ export function ProfilePanel() {
                 </div>
                 <input
                   placeholder={p.label}
-                  value={socials[p.key] ?? ''}
-                  onChange={(e) => setSocial(p.key, e.target.value)}
+                  value={localSocials[p.key] ?? ''}
+                  onChange={(e) => setLocalSocials((prev) => ({ ...prev, [p.key]: e.target.value }))}
                   style={{
                     ...fieldStyle,
-                    border: socials[p.key] ? `1px solid ${p.color}66` : '1px solid rgba(50,54,78,0.12)',
+                    border: localSocials[p.key] ? `1px solid ${p.color}66` : '1px solid rgba(50,54,78,0.12)',
                   }}
                 />
               </div>
             ))}
+            <button
+              onClick={async () => {
+                setSocialsSaving(true)
+                for (const p of SOCIAL_PLATFORMS) {
+                  await setSocial(p.key, localSocials[p.key] ?? '')
+                }
+                setSocialsSaving(false)
+                setSocialsSaved(true)
+                setTimeout(() => setSocialsSaved(false), 2000)
+              }}
+              disabled={socialsSaving}
+              style={{
+                marginTop: '4px',
+                padding: '10px',
+                borderRadius: '50px',
+                border: 'none',
+                background: socialsSaved
+                  ? 'rgba(60,180,100,0.15)'
+                  : 'rgba(50,54,78,0.08)',
+                color: socialsSaved ? 'rgba(40,140,80,0.9)' : 'rgba(50,54,78,0.7)',
+                fontSize: '13px',
+                fontWeight: 600,
+                cursor: socialsSaving ? 'not-allowed' : 'pointer',
+                transition: 'all 0.2s',
+              }}
+            >
+              {socialsSaving ? 'Guardando…' : socialsSaved ? '✓ Guardado' : 'Guardar'}
+            </button>
           </div>
         )}
       </div>

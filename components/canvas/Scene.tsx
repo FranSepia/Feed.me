@@ -35,20 +35,27 @@ function computeOrbitPositions(
   const result: Record<string, [number, number, number]> = {}
   result[selectedId] = sel.position
 
-  const minR  = isMobile ? 4.5 : 6.0
-  const MAX_R = isMobile ? 9.0 : 13.0
+  // Place related nodes randomly across the full visible screen area.
+  // We compute the viewport bounds at orbit depth (sel.z - 5) using the
+  // default camera zoom for an image node — so no zoom-out is needed.
+  const aspect  = typeof window !== 'undefined' ? window.innerWidth / window.innerHeight : 1.6
+  const zoomD   = isMobile ? 13 : 7.5          // matches CameraControls ZOOM_DIST image
+  const depth   = zoomD + 5                    // camera at sel.z+zoomD, orbit at sel.z-5
+  const fovV    = isMobile ? 65 : 60
+  const halfH   = depth * Math.tan((fovV / 2) * Math.PI / 180) * 0.80  // 80% inset
+  const halfW   = halfH * aspect
+  const minDist = isMobile ? 2.5 : 3.5         // exclusion zone around selected node
 
   related.forEach((node) => {
-    // Fully random angle per node (seeded so stable across renders)
-    const angle = seededRandom(node.seed * 6 + 1) * Math.PI * 2
-    // sqrt gives uniform area distribution — avoids clustering near center
-    const r = minR + Math.sqrt(seededRandom(node.seed * 4 + 3)) * (MAX_R - minR)
-    // Small extra jitter so nodes that land at similar r don't feel grid-like
-    const jx = (seededRandom(node.seed * 9 + 5) - 0.5) * 1.2
-    const jy = (seededRandom(node.seed * 7 + 2) - 0.5) * 1.2
+    // Independent seeded random for x and y — no circular pattern
+    let x = (seededRandom(node.seed * 6 + 1) * 2 - 1) * halfW
+    let y = (seededRandom(node.seed * 4 + 3) * 2 - 1) * halfH
+    // Push away from center if too close to selected node
+    const dist = Math.sqrt(x * x + y * y)
+    if (dist < minDist) { x = x * minDist / dist; y = y * minDist / dist }
     result[node.id] = [
-      sel.position[0] + Math.cos(angle) * r + jx,
-      sel.position[1] + Math.sin(angle) * r + jy,
+      sel.position[0] + x,
+      sel.position[1] + y,
       sel.position[2] - 5,
     ]
   })
