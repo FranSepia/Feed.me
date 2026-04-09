@@ -77,17 +77,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // because getSession() can hang indefinitely if token refresh fails.
     // INITIAL_SESSION always fires (even when there is no session), so
     // setLoading(false) is guaranteed to be called.
-    // Fallback: if INITIAL_SESSION never fires (stale token refresh hangs),
-    // force loading=false after 4 seconds so the page doesn't spin forever.
-    // Also sign out to clear any corrupted stored session.
+    // Safety net: if INITIAL_SESSION never fires at all (extremely rare),
+    // unblock the UI after 12 seconds. No signOut — we don't want to kick
+    // out users whose token refresh is just slow (can take 4-8s on mobile).
     const fallbackTimer = setTimeout(() => {
-      // Don't await — signOut itself can hang if the network is stuck.
-      // Just clear local state and unblock the UI immediately.
-      supabase?.auth.signOut().catch(() => {})
-      setUser(null)
-      setProfile(null)
       setLoading(false)
-    }, 4000)
+    }, 12000)
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
