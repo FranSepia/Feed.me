@@ -73,23 +73,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return
     }
 
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      const u = session?.user ?? null
-      setUser(u)
-      if (u) loadProfile(u.id).finally(() => setLoading(false))
-      else setLoading(false)
-    })
-
-    // Subscribe to changes
+    // Use onAuthStateChange for INITIAL_SESSION — more reliable than getSession()
+    // because getSession() can hang indefinitely if token refresh fails.
+    // INITIAL_SESSION always fires (even when there is no session), so
+    // setLoading(false) is guaranteed to be called.
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
+      async (event, session) => {
         const u = session?.user ?? null
         setUser(u)
         if (u) {
           await loadProfile(u.id)
         } else {
           setProfile(null)
+        }
+        // After the first event (INITIAL_SESSION), mark loading done
+        if (event === 'INITIAL_SESSION') {
+          setLoading(false)
         }
       }
     )
