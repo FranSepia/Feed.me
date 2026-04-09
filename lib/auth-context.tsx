@@ -80,8 +80,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Fallback: if INITIAL_SESSION never fires (stale token refresh hangs),
     // force loading=false after 4 seconds so the page doesn't spin forever.
     // Also sign out to clear any corrupted stored session.
-    const fallbackTimer = setTimeout(async () => {
-      try { await supabase?.auth.signOut() } catch { /* ignore */ }
+    const fallbackTimer = setTimeout(() => {
+      // Don't await — signOut itself can hang if the network is stuck.
+      // Just clear local state and unblock the UI immediately.
+      supabase?.auth.signOut().catch(() => {})
       setUser(null)
       setProfile(null)
       setLoading(false)
