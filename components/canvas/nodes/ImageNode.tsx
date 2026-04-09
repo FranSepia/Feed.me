@@ -46,7 +46,7 @@ export function ImageNode({ node, isSelected, isDimmed, isOrbit, targetPosition 
 
   const targetOpacity = isDimmed ? 0.32 : 1
   const mobileOrbitScale = typeof window !== 'undefined' && window.innerWidth < 600 ? 0.55 : 0.82
-  const targetScale = isSelected ? 1.12 : isOrbit ? (hovered ? mobileOrbitScale + 0.08 : mobileOrbitScale) : hovered ? 1.04 : 1
+  const targetScale = isSelected ? 1.75 : isOrbit ? (hovered ? mobileOrbitScale + 0.08 : mobileOrbitScale) : hovered ? 1.04 : 1
 
   const springs = useSpring({
     position: targetPosition,

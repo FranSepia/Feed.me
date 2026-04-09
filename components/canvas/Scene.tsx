@@ -35,29 +35,20 @@ function computeOrbitPositions(
   const result: Record<string, [number, number, number]> = {}
   result[selectedId] = sel.position
 
-  const n = related.length
-  const nodeWidth = isMobile ? 2.0 : 3.2
-  const minR     = isMobile ? 5.0 : 7.0
-  // Cap the radius so nodes stay within the zoomed-out camera view.
-  // CameraControls zooms out proportionally, so use the same MAX_R.
-  const MAX_R    = isMobile ? 9.0 : 15.0
-  const circumR  = (n * nodeWidth * 1.1) / (2 * Math.PI)
-  const R        = Math.min(MAX_R, Math.max(minR, circumR))
+  const minR  = isMobile ? 4.5 : 6.0
+  const MAX_R = isMobile ? 9.0 : 13.0
 
-  const Rx = isMobile ? R * 0.65 : R
-  const Ry = isMobile ? R * 1.10 : R * 0.55
-  // Reduce jitter when many nodes so they don't overflow the ring
-  const jitterScale = Math.max(0.06, 0.18 - n * 0.004)
-  const jitterX = R * jitterScale
-  const jitterY = R * jitterScale * 0.75
-
-  related.forEach((node, i) => {
-    const angle = (i / Math.max(n, 1)) * Math.PI * 2 - Math.PI / 2
-    const jx = (seededRandom(node.seed * 5 + 1) - 0.5) * 2 * jitterX
-    const jy = (seededRandom(node.seed * 7 + 3) - 0.5) * 2 * jitterY
+  related.forEach((node) => {
+    // Fully random angle per node (seeded so stable across renders)
+    const angle = seededRandom(node.seed * 6 + 1) * Math.PI * 2
+    // sqrt gives uniform area distribution — avoids clustering near center
+    const r = minR + Math.sqrt(seededRandom(node.seed * 4 + 3)) * (MAX_R - minR)
+    // Small extra jitter so nodes that land at similar r don't feel grid-like
+    const jx = (seededRandom(node.seed * 9 + 5) - 0.5) * 1.2
+    const jy = (seededRandom(node.seed * 7 + 2) - 0.5) * 1.2
     result[node.id] = [
-      sel.position[0] + Math.cos(angle) * Rx + jx,
-      sel.position[1] + Math.sin(angle) * Ry + jy,
+      sel.position[0] + Math.cos(angle) * r + jx,
+      sel.position[1] + Math.sin(angle) * r + jy,
       sel.position[2] - 5,
     ]
   })
