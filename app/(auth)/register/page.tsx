@@ -52,7 +52,7 @@ export default function RegisterPage() {
           Feed<span style={{ color: 'rgba(237,232,222,0.3)' }}>.</span>Me
         </div>
         <div style={{ color: 'rgba(237,232,222,0.45)', fontSize: '14px' }}>
-          Crea tu canvas. Compártelo con el mundo.
+          Create your canvas. Share it with the world.
         </div>
       </div>
 
@@ -74,11 +74,11 @@ export default function RegisterPage() {
           }}>
             <div style={{ fontSize: '40px' }}>✉️</div>
             <div style={{ color: '#ede8de', fontSize: '18px', fontWeight: 600, textAlign: 'center' }}>
-              ¡Revisa tu correo!
+              Check your email!
             </div>
             <div style={{ color: 'rgba(237,232,222,0.5)', fontSize: '14px', textAlign: 'center', lineHeight: 1.5 }}>
-              Te enviamos un link de confirmación a <strong style={{ color: '#ede8de' }}>{email}</strong>.
-              Haz click en él para activar tu cuenta.
+              We've sent a confirmation link to <strong style={{ color: '#ede8de' }}>{email}</strong>.
+              Click it to activate your account.
             </div>
             <Link href="/login" style={{
               marginTop: '8px',
@@ -91,13 +91,13 @@ export default function RegisterPage() {
               textDecoration: 'none',
               fontWeight: 500,
             }}>
-              Ir al Login
+              Go to Login
             </Link>
           </div>
         ) : (
           <>
             <div style={{ fontSize: '20px', fontWeight: 600, color: '#ede8de', marginBottom: '4px' }}>
-              Crear cuenta
+              Create Account
             </div>
 
             {error && (
@@ -145,7 +145,7 @@ export default function RegisterPage() {
             />
             <input
               type="password"
-              placeholder="Contraseña (mín. 6 caracteres)"
+              placeholder="Password (min. 6 chars)"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
@@ -171,7 +171,7 @@ export default function RegisterPage() {
                 letterSpacing: '-0.01em',
               }}
             >
-              {loading ? 'Creando cuenta...' : 'Crear cuenta'}
+              {loading ? 'Creating account...' : 'Create account'}
             </button>
 
             <div style={{
@@ -180,9 +180,9 @@ export default function RegisterPage() {
               fontSize: '13px',
               marginTop: '4px',
             }}>
-              ¿Ya tienes cuenta?{' '}
+              Already have an account?{' '}
               <Link href="/login" style={{ color: '#ede8de', textDecoration: 'underline' }}>
-                Inicia sesión
+                Sign in
               </Link>
             </div>
           </>

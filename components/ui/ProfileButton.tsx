@@ -18,7 +18,7 @@ export function ProfileButton() {
       onClick={() => setShowProfilePanel(!showProfilePanel)}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      title={showProfilePanel ? "Cerrar Panel" : "Perfil"}
+      title={showProfilePanel ? "Close Panel" : "Profile"}
       style={{
         position: 'fixed',
         bottom: isMobile ? '21px' : '29px',

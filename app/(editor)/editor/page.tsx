@@ -8,6 +8,7 @@ import { EditModeButton } from '@/components/ui/EditModeButton'
 import { ProfileButton } from '@/components/ui/ProfileButton'
 import { FilterButton } from '@/components/ui/FilterButton'
 import { ShareButton } from '@/components/ui/ShareButton'
+import { NodeEditor } from '@/components/ui/NodeEditor'
 import { useCanvasStore } from '@/lib/store'
 import { useAuth } from '@/lib/auth-context'
 
@@ -43,6 +44,7 @@ export default function EditorPage() {
       <ProfileButton />
       <ShareButton username={profile?.username} />
       <ProfilePanel />
+      <NodeEditor />
 
       {/* Local video modal */}
       {playingVideoUrl && (

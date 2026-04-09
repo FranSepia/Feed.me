@@ -81,7 +81,7 @@ export function PublicBanner() {
         transition: 'transform 0.15s',
         flexShrink: 0,
       }}>
-        Crear el mío
+        Create yours
       </Link>
 
       <button

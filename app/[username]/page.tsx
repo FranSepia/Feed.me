@@ -105,7 +105,7 @@ export default function PublicProfilePage() {
           Feed<span style={{ color: 'rgba(255,255,255,0.4)' }}>.</span>Me
         </div>
         <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '16px' }}>
-          @{username} no existe
+          @{username} does not exist
         </div>
         <a href="/register" style={{
           marginTop: '8px',
@@ -119,7 +119,7 @@ export default function PublicProfilePage() {
           fontWeight: 500,
           transition: 'all 0.15s',
         }}>
-          Crear tu Feed.Me
+          Create your Feed.Me
         </a>
       </div>
     )

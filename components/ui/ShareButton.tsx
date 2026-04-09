@@ -71,14 +71,14 @@ export function ShareButton({ username }: Props) {
           animation: 'fadeInOut 2.2s ease',
           whiteSpace: 'nowrap',
         }}>
-          ¡Link copiado! 🎉
+          Link copied! 🎉
         </div>
       )}
       <button
         onClick={handleCopy}
         onMouseEnter={() => setHover(true)}
         onMouseLeave={() => setHover(false)}
-        title="Compartir tu Feed.Me"
+        title="Share your Feed.Me"
         style={{
           width: '44px',
           height: '44px',

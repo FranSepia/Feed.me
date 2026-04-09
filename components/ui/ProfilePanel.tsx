@@ -66,7 +66,7 @@ export function ProfilePanel() {
       await refreshProfile()
     } catch (err) {
       console.error('Avatar upload error:', err)
-      alert('Error al subir la foto de perfil')
+      alert('Error uploading profile picture')
     } finally {
       setAvatarUploading(false)
     }
@@ -95,7 +95,7 @@ export function ProfilePanel() {
       {/* Header */}
       <div style={{
         padding: '20px 20px 0',
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        display: 'flex', justifyContent: 'center', alignItems: 'center',
       }}>
         <div style={{ display: 'flex', gap: '4px' }}>
           {(['profile', 'socials'] as Tab[]).map((tab) => (
@@ -112,7 +112,7 @@ export function ProfilePanel() {
               color: activeTab === tab ? 'rgba(50,54,78,0.95)' : 'rgba(50,54,78,0.45)',
               fontSize: '13px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.15s',
             }}>
-              {tab === 'profile' ? 'Perfil' : 'Redes'}
+              {tab === 'profile' ? 'Profile' : 'Socials'}
             </button>
           ))}
         </div>
@@ -193,7 +193,7 @@ export function ProfilePanel() {
                 color: 'rgba(50,54,78,0.45)', fontSize: '11px', marginBottom: '12px',
                 textTransform: 'uppercase', letterSpacing: '0.06em', fontWeight: 600,
               }}>
-                Color del canvas
+                Canvas Color
               </div>
               <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                 {PRESET_COLORS.map((c) => (
@@ -217,7 +217,7 @@ export function ProfilePanel() {
                   />
                 ))}
                 <label
-                  title="Color personalizado"
+                  title="Custom color"
                   style={{
                     flex: 1, height: '40px', borderRadius: '10px', cursor: 'pointer',
                     border: !PRESET_COLORS.some(c => c.hex === bgColor)
@@ -264,7 +264,7 @@ export function ProfilePanel() {
                 transition: 'all 0.15s',
               }}
             >
-              Cerrar sesión
+              Sign Out
             </button>
           </div>
         )}
@@ -272,7 +272,7 @@ export function ProfilePanel() {
         {activeTab === 'socials' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             <p style={{ color: 'rgba(50,54,78,0.45)', fontSize: '12px', marginBottom: '4px' }}>
-              Agrega tus redes sociales.
+              Add your social media.
             </p>
             {SOCIAL_PLATFORMS.map((p) => (
               <div key={p.key} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>

@@ -134,6 +134,7 @@ interface CanvasStore {
   setSocial: (platform: string, url: string) => Promise<void>
   addNode: (node: Omit<NodeData, 'id' | 'position'>) => Promise<void>
   removeNode: (id: string) => Promise<void>
+  updateNode: (id: string, updates: Partial<NodeData>) => Promise<void>
   loadFromSupabase: (userId: string) => Promise<void>
   resetCanvas: () => void
 }
@@ -280,6 +281,34 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
         }
       } catch (e) {
         console.error('[Feed.Me] Failed to save node:', e)
+      }
+    }
+  },
+
+  updateNode: async (id, updates) => {
+    const { readOnly, userId } = get()
+    if (readOnly || !userId) return
+
+    // Optimistic update
+    set((state) => ({
+      nodes: state.nodes.map((n) => (n.id === id ? { ...n, ...updates } : n)),
+    }))
+
+    // Persist
+    const db = supabase
+    if (db) {
+      try {
+        const payload: Record<string, any> = {}
+        if (updates.title !== undefined) payload.title = updates.title
+        if (updates.caption !== undefined) payload.caption = updates.caption
+        if (updates.tags !== undefined) payload.tags = updates.tags
+                
+        if (Object.keys(payload).length > 0) {
+          const { error } = await db.from('canvas_nodes').update(payload).eq('id', id)
+          if (error) console.error('[Feed.Me] UPDATE error:', error.message)
+        }
+      } catch (e) {
+        console.error('[Feed.Me] Failed to update node:', e)
       }
     }
   },

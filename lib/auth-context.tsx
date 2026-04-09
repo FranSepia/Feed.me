@@ -98,20 +98,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [loadProfile])
 
   const signIn = async (email: string, password: string) => {
-    if (!supabase) return { error: 'Supabase no configurado' }
+    if (!supabase) return { error: 'Supabase not configured' }
     const { error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) return { error: error.message }
     return {}
   }
 
   const signUp = async (email: string, password: string, username: string, displayName?: string) => {
-    if (!supabase) return { error: 'Supabase no configurado' }
+    if (!supabase) return { error: 'Supabase not configured' }
 
     // Validate username
     const clean = username.toLowerCase().replace(/[^a-z0-9_.-]/g, '')
-    if (clean.length < 3) return { error: 'El username debe tener al menos 3 caracteres' }
-    if (clean.length > 30) return { error: 'El username es muy largo (máx 30)' }
-    if (RESERVED.has(clean)) return { error: 'Ese username está reservado' }
+    if (clean.length < 3) return { error: 'Username must be at least 3 characters long' }
+    if (clean.length > 30) return { error: 'Username is too long (max 30)' }
+    if (RESERVED.has(clean)) return { error: 'That username is reserved' }
 
     // Check uniqueness
     const { data: existing } = await supabase
@@ -119,7 +119,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .select('id')
       .eq('username', clean)
       .maybeSingle()
-    if (existing) return { error: 'Ese username ya está en uso' }
+    if (existing) return { error: 'Username already in use' }
 
     // Register
     const { error } = await supabase.auth.signUp({

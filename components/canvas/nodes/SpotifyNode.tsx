@@ -93,7 +93,9 @@ export function SpotifyNode({ node, isSelected, isDimmed, isOrbit, targetPositio
   // Stop/cleanup when no longer showing
   useEffect(() => {
     if (!shouldShow && controllerRef.current) {
-      controllerRef.current.destroy()
+      if (typeof controllerRef.current.destroy === 'function') {
+        controllerRef.current.destroy()
+      }
       controllerRef.current = null
       if (wrapperRef.current) wrapperRef.current.innerHTML = ''
     }
@@ -101,7 +103,7 @@ export function SpotifyNode({ node, isSelected, isDimmed, isOrbit, targetPositio
 
   const springs = useSpring({
     position: targetPosition,
-    scale: isSelected ? 0.32 : isOrbit ? 0.82 : autoPlay ? 1.06 : 1,
+    scale: isSelected ? 1.1 : isOrbit ? 0.82 : autoPlay ? 1.06 : 1,
     config: { mass: 1.2, tension: 140, friction: 26 },
   })
 
@@ -111,7 +113,6 @@ export function SpotifyNode({ node, isSelected, isDimmed, isOrbit, targetPositio
 
   const handleNodeClick = (e: React.MouseEvent) => {
     e.stopPropagation()
-    if (editMode) return
     setSelectedNode(isSelected ? null : node.id)
   }
 

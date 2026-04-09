@@ -83,8 +83,13 @@ export function VideoNode({ node, isSelected, isDimmed, isOrbit, targetPosition 
 
   const handleClick = (e: { stopPropagation: () => void }) => {
     e.stopPropagation()
-    if (editMode) return
-    setSelectedNode(isSelected ? null : node.id)
+    
+    // If it's a local video and clicked while selected, we expand it into the modal
+    if (!isYT && isSelected) {
+      setPlayingVideoUrl(node.content)
+    } else {
+      setSelectedNode(isSelected ? null : node.id)
+    }
   }
 
   // Fixed card dimensions — thumbnail and iframe share the same size so there's no jump

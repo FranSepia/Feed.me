@@ -40,7 +40,6 @@ export function SocialNode({ node, isSelected, isDimmed, isOrbit, targetPosition
 
   const handleClick = (e: { stopPropagation: () => void }) => {
     e.stopPropagation()
-    if (editMode) return
     setSelectedNode(isSelected ? null : node.id)
   }
 

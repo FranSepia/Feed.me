@@ -8,6 +8,39 @@ import { useAuth } from '@/lib/auth-context'
 
 type UploadType = 'image' | 'video' | 'text' | 'spotify' | null
 
+// ── Google Drive helpers ──────────────────────────────────────────────────────
+function extractDriveId(url: string): string | null {
+  const patterns = [
+    /drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/,
+    /drive\.google\.com\/open\?id=([a-zA-Z0-9_-]+)/,
+    /drive\.google\.com\/uc\?.*id=([a-zA-Z0-9_-]+)/,
+  ]
+  for (const p of patterns) {
+    const m = url.match(p)
+    if (m) return m[1]
+  }
+  return null
+}
+
+function isDriveUrl(url: string): boolean {
+  return url.includes('drive.google.com')
+}
+
+// Download a Drive file via our API proxy and return a File object
+async function fetchDriveFile(url: string): Promise<File> {
+  const encoded = encodeURIComponent(url)
+  const res = await fetch(`/api/drive-download?url=${encoded}`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}))
+    throw new Error(err.error ?? `Drive download failed (${res.status})`)
+  }
+  const blob = await res.blob()
+  const contentType = blob.type || 'application/octet-stream'
+  const ext = contentType.split('/')[1]?.split(';')[0] ?? 'bin'
+  const id = extractDriveId(url) ?? 'drive-file'
+  return new File([blob], `drive-${id}.${ext}`, { type: contentType })
+}
+
 // ── SVG outline icons (pure white stroke, no fill) ──────────────────────────
 function IconPhoto() {
   return (
@@ -135,26 +168,28 @@ export function BottomBar() {
   const [spotifyLoading, setSpotifyLoading] = useState(false)
   const [tags, setTags] = useState('')
   const [imageUrl, setImageUrl] = useState('')
-  const [imagePreview, setImagePreview] = useState<string | null>(null)
   const [imageName, setImageName] = useState('')
   const [imageCaption, setImageCaption] = useState('')
   const [imageDate, setImageDate] = useState('')
   const [isDragOver, setIsDragOver] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [driveLoading, setDriveLoading] = useState(false)
+  const [driveError, setDriveError] = useState('')
+  // previews[i] is an object-URL for imageFilesState[i]
+  const [imagePreviews, setImagePreviews] = useState<string[]>([])
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const imageFileRef = useRef<File | null>(null)
-  const videoRawFileRef = useRef<File | null>(null)
+  const [imageFilesState, setImageFilesState] = useState<File[]>([])
+  const [videoFilesState, setVideoFilesState] = useState<File[]>([])
   const addNode = useCanvasStore((s) => s.addNode)
   const nodes = useCanvasStore((s) => s.nodes)
   const readOnly = useCanvasStore((s) => s.readOnly)
+  const editMode = useCanvasStore((s) => s.editMode)
+  const selectedNode = useCanvasStore((s) => s.selectedNode)
   const { isMobile } = useResponsive()
   const { user } = useAuth()
 
   // All unique tags already in the canvas
   const existingTags = Array.from(new Set(nodes.flatMap((n) => n.tags))).sort()
-
-  // Hide in read-only mode (public view)
-  if (readOnly) return null
 
   // Upload a file to Supabase Storage and return its public URL
   const uploadMedia = async (file: File): Promise<string> => {
@@ -172,33 +207,71 @@ export function BottomBar() {
     return data.publicUrl
   }
 
-  const handleFileSelect = useCallback((file: File) => {
-    if (!file.type.startsWith('image/')) return
-    imageFileRef.current = file
-    const objectUrl = URL.createObjectURL(file)
-    setImagePreview(objectUrl)
-    setImageUrl(objectUrl)
-    setImageName(file.name)
-  }, [])
+  const addImageFiles = (files: File[]) => {
+    const imageFiles = files.filter(f => f.type.startsWith('image/'))
+    if (imageFiles.length === 0) return
+    const newPreviews = imageFiles.map(f => URL.createObjectURL(f))
+    setImageFilesState(prev => [...prev, ...imageFiles])
+    setImagePreviews(prev => [...prev, ...newPreviews])
+    setImageUrl('')
+  }
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) handleFileSelect(file)
+    const files = Array.from(e.target.files || [])
+    if (files.length > 0) addImageFiles(files)
+    // Reset so the same files can be re-selected
+    e.target.value = ''
   }
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault()
     setIsDragOver(false)
-    const file = e.dataTransfer.files?.[0]
-    if (file) handleFileSelect(file)
+    const files = Array.from(e.dataTransfer.files || [])
+    if (files.length > 0) addImageFiles(files)
   }
 
-  const clearImage = () => {
-    if (imagePreview) URL.revokeObjectURL(imagePreview)
-    setImagePreview(null)
-    setImageUrl('')
-    setImageName('')
-    if (fileInputRef.current) fileInputRef.current.value = ''
+  const removeImageFile = (index: number) => {
+    URL.revokeObjectURL(imagePreviews[index])
+    setImageFilesState(prev => prev.filter((_, i) => i !== index))
+    setImagePreviews(prev => prev.filter((_, i) => i !== index))
+  }
+
+  const handleImageUrlChange = async (value: string) => {
+    setDriveError('')
+    if (isDriveUrl(value)) {
+      setDriveLoading(true)
+      try {
+        const file = await fetchDriveFile(value)
+        addImageFiles([file])
+      } catch (err: any) {
+        setDriveError(err.message ?? 'Error downloading from Drive')
+      } finally {
+        setDriveLoading(false)
+      }
+    } else {
+      setImageUrl(value)
+    }
+  }
+
+  const handleVideoUrlChange = async (value: string) => {
+    setDriveError('')
+    if (isDriveUrl(value)) {
+      setDriveLoading(true)
+      try {
+        const file = await fetchDriveFile(value)
+        setVideoFilesState(prev => [...prev, file])
+        setVideoFile(URL.createObjectURL(file))
+        setVideoFileName(file.name)
+      } catch (err: any) {
+        setDriveError(err.message ?? 'Error downloading from Drive')
+      } finally {
+        setDriveLoading(false)
+      }
+    } else {
+      setVideoUrl(value)
+      setVideoFile(null)
+      setVideoFilesState([])
+    }
   }
 
   const handleSpotifyUrlChange = async (value: string) => {
@@ -234,39 +307,37 @@ export function BottomBar() {
         await addNode({ type: 'text', content: textContent, title: textTitle, tags: tagList, seed: Math.random() })
         setTextContent(''); setTextTitle('')
 
-      } else if (activeType === 'image' && imageUrl) {
-        let finalUrl = imageUrl
-        // If user selected a local file, try uploading to Supabase Storage
-        if (imageFileRef.current) {
-          try {
-            finalUrl = await uploadMedia(imageFileRef.current)
-          } catch (uploadErr) {
-            console.warn('Storage upload failed, using local URL for this session:', uploadErr)
-            // Keep the local blob URL — node will show in this session but won't persist across devices
+      } else if (activeType === 'image' && (imageUrl || imageFilesState.length > 0)) {
+        if (imageFilesState.length > 0) {
+          for (const file of imageFilesState) {
+            let finalUrl = ''
+            try { finalUrl = await uploadMedia(file) } catch (err) { finalUrl = URL.createObjectURL(file) }
+            await addNode({ type: 'image', content: finalUrl, title: file.name, caption: imageCaption || undefined, date: imageDate || undefined, tags: tagList, seed: Math.random() })
           }
-          imageFileRef.current = null
+        } else if (imageUrl) {
+          await addNode({ type: 'image', content: imageUrl, title: imageName || 'Image', caption: imageCaption || undefined, date: imageDate || undefined, tags: tagList, seed: Math.random() })
         }
-        await addNode({ type: 'image', content: finalUrl, title: imageName || 'Image', caption: imageCaption || undefined, date: imageDate || undefined, tags: tagList, seed: Math.random() })
-        if (imagePreview?.startsWith('blob:')) URL.revokeObjectURL(imagePreview)
-        setImagePreview(null); setImageName(''); setImageUrl(''); setImageCaption(''); setImageDate('')
+        setImagePreviews([]); setImageName(''); setImageUrl(''); setImageCaption(''); setImageDate(''); setImageFilesState([])
 
       } else if (activeType === 'spotify' && spotifyTrackId) {
         await addNode({ type: 'spotify', content: spotifyTrackId, title: spotifyTitle || 'Track', tags: tagList, seed: Math.random() })
         setSpotifyUrl(''); setSpotifyTrackId(''); setSpotifyTitle('')
 
-      } else if (activeType === 'video' && (videoUrl || videoFile || videoRawFileRef.current)) {
-        let finalUrl = videoUrl || videoFile || ''
-        // If user selected a local video file, upload it to Supabase Storage
-        if (videoRawFileRef.current) {
-          finalUrl = await uploadMedia(videoRawFileRef.current)
-          videoRawFileRef.current = null
+      } else if (activeType === 'video' && (videoUrl || videoFilesState.length > 0)) {
+        if (videoFilesState.length > 0) {
+          for (const file of videoFilesState) {
+            let finalUrl = ''
+            try { finalUrl = await uploadMedia(file) } catch (err) { finalUrl = URL.createObjectURL(file) }
+            await addNode({ type: 'video', content: finalUrl, title: file.name, caption: videoCaption || undefined, date: videoDate || undefined, tags: tagList, seed: Math.random() })
+          }
+        } else if (videoUrl) {
+          await addNode({ type: 'video', content: videoUrl, title: videoTitle || 'Video', caption: videoCaption || undefined, date: videoDate || undefined, tags: tagList, seed: Math.random() })
         }
-        await addNode({ type: 'video', content: finalUrl, title: videoTitle || videoFileName || 'Video', caption: videoCaption || undefined, date: videoDate || undefined, tags: tagList, seed: Math.random() })
-        setVideoUrl(''); setVideoTitle(''); setVideoCaption(''); setVideoDate(''); setVideoFile(null); setVideoFileName('')
+        setVideoUrl(''); setVideoTitle(''); setVideoCaption(''); setVideoDate(''); setVideoFile(null); setVideoFileName(''); setVideoFilesState([])
       }
     } catch (err) {
-      console.error('Error adding node:', err)
-      alert('Error al subir el archivo. Verifica tu conexión e inténtalo de nuevo.')
+      console.error('File upload failed:', err)
+      alert('Error uploading file. Check your connection and try again.')
     } finally {
       setUploading(false)
     }
@@ -274,6 +345,9 @@ export function BottomBar() {
     setTags('')
     setActiveType(null)
   }
+
+  // Hide in read-only mode (public view) or if editing a node
+  if (readOnly || (editMode && selectedNode)) return null
 
   return (
     <>
@@ -331,41 +405,55 @@ export function BottomBar() {
                 ref={fileInputRef}
                 type="file"
                 accept="image/*"
+                multiple
                 onChange={handleFileInputChange}
                 style={{ display: 'none' }}
               />
 
-              {imagePreview ? (
-                /* Preview */
-                <div style={{ position: 'relative', borderRadius: '12px', overflow: 'hidden' }}>
-                  <img
-                    src={imagePreview}
-                    alt="preview"
-                    style={{ width: '100%', height: '180px', objectFit: 'cover', display: 'block' }}
-                  />
-                  <div style={{
-                    position: 'absolute', inset: 0,
-                    background: 'linear-gradient(to top, rgba(0,0,0,0.6) 0%, transparent 50%)',
-                    display: 'flex', alignItems: 'flex-end', padding: '10px 12px',
-                    justifyContent: 'space-between',
-                  }}>
-                    <span style={{ color: 'rgba(255,255,255,0.8)', fontSize: '12px', maxWidth: '220px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {imageName}
-                    </span>
-                    <button onClick={clearImage} style={{ background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '20px', color: 'white', fontSize: '11px', padding: '3px 10px', cursor: 'pointer' }}>
-                      Change
-                    </button>
-                  </div>
+              {/* Multi-file thumbnail grid */}
+              {imagePreviews.length > 0 && (
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(3, 1fr)',
+                  gap: '6px',
+                }}>
+                  {imagePreviews.map((src, i) => (
+                    <div key={i} style={{ position: 'relative', borderRadius: '8px', overflow: 'hidden', aspectRatio: '1' }}>
+                      <img src={src} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                      <button
+                        onClick={() => removeImageFile(i)}
+                        style={{
+                          position: 'absolute', top: '4px', right: '4px',
+                          width: '20px', height: '20px', borderRadius: '50%',
+                          background: 'rgba(0,0,0,0.6)', border: 'none',
+                          color: 'white', fontSize: '11px', cursor: 'pointer',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1,
+                        }}
+                      >✕</button>
+                    </div>
+                  ))}
+                  {/* Add more button */}
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    style={{
+                      borderRadius: '8px', aspectRatio: '1',
+                      border: '2px dashed rgba(0,0,0,0.15)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      cursor: 'pointer', color: 'rgba(0,0,0,0.3)', fontSize: '22px',
+                    }}
+                  >+</div>
                 </div>
-              ) : (
-                /* Drop zone */
+              )}
+
+              {/* Drop zone — shown when no files yet */}
+              {imagePreviews.length === 0 && (
                 <div
                   onClick={() => fileInputRef.current?.click()}
                   onDragOver={(e) => { e.preventDefault(); setIsDragOver(true) }}
                   onDragLeave={() => setIsDragOver(false)}
                   onDrop={handleDrop}
                   style={{
-                    border: `2px dashed ${isDragOver ? 'rgba(74,158,255,0.7)' : 'rgba(255,255,255,0.15)'}`,
+                    border: `2px dashed ${isDragOver ? 'rgba(74,158,255,0.7)' : 'rgba(0,0,0,0.15)'}`,
                     borderRadius: '12px',
                     padding: '28px 16px',
                     display: 'flex',
@@ -377,7 +465,7 @@ export function BottomBar() {
                     transition: 'all 0.18s',
                   }}
                 >
-                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="rgba(0,0,0,0.3)" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
                     <polyline points="17 8 12 3 7 8" />
                     <line x1="12" y1="3" x2="12" y2="15" />
@@ -386,64 +474,55 @@ export function BottomBar() {
                     Click to upload or drag & drop
                   </span>
                   <span style={{ color: 'rgba(0,0,0,0.3)', fontSize: '11px' }}>
-                    PNG, JPG, GIF, WEBP
+                    PNG, JPG, GIF, WEBP · multiple selection supported
                   </span>
                 </div>
               )}
 
-              {/* URL fallback */}
+              {/* URL / Drive URL input */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <div style={{ flex: 1, height: '1px', background: 'rgba(0,0,0,0.08)' }} />
-                <span style={{ color: 'rgba(0,0,0,0.35)', fontSize: '11px' }}>or paste URL</span>
+                <span style={{ color: 'rgba(0,0,0,0.35)', fontSize: '11px' }}>or paste URL / Drive link</span>
                 <div style={{ flex: 1, height: '1px', background: 'rgba(0,0,0,0.08)' }} />
               </div>
-              <input
-                placeholder="https://..."
-                value={imagePreview ? '' : imageUrl}
-                onChange={(e) => { setImageUrl(e.target.value); setImagePreview(null); setImageName('') }}
-                style={inputStyle}
-              />
+              <div style={{ position: 'relative' }}>
+                <input
+                  placeholder="https://... or Google Drive link"
+                  value={imageUrl}
+                  onChange={(e) => handleImageUrlChange(e.target.value)}
+                  style={inputStyle}
+                />
+                {driveLoading && activeType === 'image' && (
+                  <div style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)' }}>
+                    <Spinner />
+                  </div>
+                )}
+              </div>
+              {driveError && activeType === 'image' && (
+                <span style={{ color: 'rgba(220,60,60,0.85)', fontSize: '12px', paddingLeft: '4px' }}>{driveError}</span>
+              )}
 
               {/* Caption */}
               <input
-                placeholder="Texto de la foto (opcional)..."
                 value={imageCaption}
                 onChange={(e) => setImageCaption(e.target.value)}
-                style={inputStyle}
+                placeholder="Photo caption (optional)..."
+                style={{ ...inputStyle, width: '100%', marginBottom: '12px' }}
               />
 
               {/* Date */}
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <input
-                  type="date"
-                  value={imageDate}
-                  onChange={(e) => setImageDate(e.target.value)}
-                  style={{ ...inputStyle, flex: 1, colorScheme: 'dark' }}
-                />
-                <button
-                  onClick={() => setImageDate(new Date().toISOString().split('T')[0])}
-                  style={{
-                    background: 'rgba(0,0,0,0.08)',
-                    border: '1px solid rgba(255,255,255,0.12)',
-                    borderRadius: '8px',
-                    color: 'rgba(255,255,255,0.7)',
-                    fontSize: '12px',
-                    padding: '0 14px',
-                    height: '38px',
-                    cursor: 'pointer',
-                    whiteSpace: 'nowrap',
-                    flexShrink: 0,
-                  }}
-                >
-                  Hoy
-                </button>
-              </div>
+              <input
+                type="date"
+                value={imageDate}
+                onChange={(e) => setImageDate(e.target.value)}
+                style={{ ...inputStyle, width: '100%', colorScheme: 'light' }}
+              />
             </>
           )}
           {activeType === 'spotify' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
               <input
-                placeholder="Pega el link de Spotify..."
+                placeholder="Paste Spotify link..."
                 value={spotifyUrl}
                 onChange={(e) => handleSpotifyUrlChange(e.target.value)}
                 style={inputStyle}
@@ -452,7 +531,7 @@ export function BottomBar() {
               {spotifyLoading && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 12px', background: 'rgba(29,185,84,0.08)', borderRadius: '10px', border: '1px solid rgba(29,185,84,0.2)' }}>
                   <div style={{ width: '16px', height: '16px', border: '2px solid rgba(29,185,84,0.4)', borderTopColor: '#1DB954', borderRadius: '50%', animation: 'spin 0.7s linear infinite' }} />
-                  <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>Buscando canción...</span>
+                  <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: '13px' }}>Searching track...</span>
                 </div>
               )}
               {!spotifyLoading && spotifyTitle && (
@@ -462,7 +541,7 @@ export function BottomBar() {
                 </div>
               )}
               {!spotifyLoading && spotifyUrl && !spotifyTrackId && (
-                <span style={{ color: 'rgba(255,100,100,0.7)', fontSize: '12px', paddingLeft: '4px' }}>Link no válido. Usa un link de canción de Spotify.</span>
+                <span style={{ color: 'rgba(255,100,100,0.7)', fontSize: '12px', paddingLeft: '4px' }}>Invalid link. Use a Spotify track link.</span>
               )}
               <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
             </div>
@@ -473,21 +552,22 @@ export function BottomBar() {
                 ref={videoFileInputRef}
                 type="file"
                 accept="video/*"
+                multiple
                 style={{ display: 'none' }}
                 onChange={(e) => {
-                  const f = e.target.files?.[0]
-                  if (!f) return
-                  videoRawFileRef.current = f
-                  setVideoFile(URL.createObjectURL(f))
-                  setVideoFileName(f.name)
+                  const files = Array.from(e.target.files || [])
+                  if (files.length === 0) return
+                  setVideoFilesState(prev => [...prev, ...files])
+                  setVideoFile(URL.createObjectURL(files[0]))
+                  setVideoFileName(files.length > 1 ? `${files.length} videos selected` : files[0].name)
                 }}
               />
-              {videoFile ? (
+              {videoFilesState.length > 0 || videoFile ? (
                 <div style={{ position: 'relative', borderRadius: '12px', overflow: 'hidden', background: '#000' }}>
-                  <video src={videoFile} style={{ width: '100%', height: '120px', objectFit: 'cover', display: 'block' }} muted />
+                  <video src={videoFile || ''} style={{ width: '100%', height: '120px', objectFit: 'cover', display: 'block' }} muted />
                   <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.6) 0%, transparent 50%)', display: 'flex', alignItems: 'flex-end', padding: '10px 12px', justifyContent: 'space-between' }}>
                     <span style={{ color: 'rgba(255,255,255,0.8)', fontSize: '12px' }}>{videoFileName}</span>
-                    <button onClick={() => { setVideoFile(null); setVideoFileName('') }} style={{ background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '20px', color: 'white', fontSize: '11px', padding: '3px 10px', cursor: 'pointer' }}>Change</button>
+                    <button onClick={() => { setVideoFile(null); setVideoFileName(''); setVideoFilesState([]) }} style={{ background: 'rgba(0,0,0,0.5)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: '20px', color: 'white', fontSize: '11px', padding: '3px 10px', cursor: 'pointer' }}>Change</button>
                   </div>
                 </div>
               ) : (
@@ -502,19 +582,29 @@ export function BottomBar() {
               )}
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <div style={{ flex: 1, height: '1px', background: 'rgba(0,0,0,0.08)' }} />
-                <span style={{ color: 'rgba(0,0,0,0.35)', fontSize: '11px' }}>or YouTube URL</span>
+                <span style={{ color: 'rgba(0,0,0,0.35)', fontSize: '11px' }}>or YouTube / Google Drive URL</span>
                 <div style={{ flex: 1, height: '1px', background: 'rgba(0,0,0,0.08)' }} />
               </div>
-              <input placeholder="https://youtube.com/watch?v=..." value={videoFile ? '' : videoUrl} onChange={(e) => { setVideoUrl(e.target.value); setVideoFile(null) }} style={inputStyle} />
-              <input placeholder="Título (opcional)" value={videoTitle} onChange={(e) => setVideoTitle(e.target.value)} style={inputStyle} />
-              <input placeholder="Descripción (opcional)" value={videoCaption} onChange={(e) => setVideoCaption(e.target.value)} style={inputStyle} />
+              <div style={{ position: 'relative' }}>
+                <input placeholder="https://youtube.com/watch?v=... or Drive link" value={videoFile ? '' : videoUrl} onChange={(e) => handleVideoUrlChange(e.target.value)} style={inputStyle} />
+                {driveLoading && activeType === 'video' && (
+                  <div style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)' }}>
+                    <Spinner />
+                  </div>
+                )}
+              </div>
+              {driveError && activeType === 'video' && (
+                <span style={{ color: 'rgba(220,60,60,0.85)', fontSize: '12px', paddingLeft: '4px' }}>{driveError}</span>
+              )}
+              <input placeholder="Title (optional)" value={videoTitle} onChange={(e) => setVideoTitle(e.target.value)} style={inputStyle} />
+              <input placeholder="Description (optional)" value={videoCaption} onChange={(e) => setVideoCaption(e.target.value)} style={inputStyle} />
               <input type="date" value={videoDate} onChange={(e) => setVideoDate(e.target.value)} style={{ ...inputStyle, colorScheme: 'light' }} />
             </div>
           )}
           {/* Tags input + existing tag suggestions */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
             <input
-              placeholder="Tags (separados por coma)"
+              placeholder="Tags (comma separated)"
               value={tags}
               onChange={(e) => setTags(e.target.value)}
               style={inputStyle}
@@ -555,7 +645,7 @@ export function BottomBar() {
             )}
           </div>
           <div style={{ display: 'flex', gap: '8px' }}>
-            <AquaButton icon={uploading ? <Spinner /> : null} label={uploading ? 'Subiendo...' : 'Add to canvas'} active themeKey={activeType ?? 'default'} onClick={uploading ? () => {} : handleAdd} />
+            <AquaButton icon={uploading ? <Spinner /> : null} label={uploading ? 'Uploading...' : 'Add to canvas'} active themeKey={activeType ?? 'default'} onClick={uploading ? () => {} : handleAdd} />
             <AquaButton icon={null} label="Cancel" active={false} themeKey="default" onClick={() => setActiveType(null)} />
           </div>
         </div>

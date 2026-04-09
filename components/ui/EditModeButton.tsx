@@ -18,7 +18,7 @@ export function EditModeButton() {
       onClick={() => setEditMode(!editMode)}
       onMouseEnter={() => setHover(true)}
       onMouseLeave={() => setHover(false)}
-      title={editMode ? 'Exit edit mode' : 'Edit mode'}
+      title={editMode ? 'Exit Edit Mode' : 'Edit Mode'}
       style={{
         position: 'fixed',
         bottom: isMobile ? '21px' : '29px',

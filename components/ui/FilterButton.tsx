@@ -52,7 +52,7 @@ export function FilterButton() {
         {/* Trigger button — identical glass style to EditModeButton/ProfileButton */}
         <button
           onClick={() => setOpen((v) => !v)}
-          title="Filtrar por tag"
+          title="Filter by tag"
           style={{
             width: '44px',
             height: '44px',
@@ -85,7 +85,7 @@ export function FilterButton() {
           <button
             key={tag}
             onClick={() => toggleTag(tag)}
-            title="Quitar filtro"
+            title="Remove filter"
             style={chipStyle(true)}
           >
             #{tag} ×
@@ -129,7 +129,7 @@ export function FilterButton() {
                   outline: 'none',
                 }}
               >
-                Limpiar
+                Clear
               </button>
             )}
           </div>

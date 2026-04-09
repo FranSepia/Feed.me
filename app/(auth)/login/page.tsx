@@ -49,7 +49,7 @@ export default function LoginPage() {
           Feed<span style={{ color: 'rgba(237,232,222,0.3)' }}>.</span>Me
         </div>
         <div style={{ color: 'rgba(237,232,222,0.45)', fontSize: '14px' }}>
-          Tu canvas creativo personal
+          Your personal creative canvas
         </div>
       </div>
 
@@ -65,7 +65,7 @@ export default function LoginPage() {
         gap: '16px',
       }}>
         <div style={{ fontSize: '20px', fontWeight: 600, color: '#ede8de', marginBottom: '4px' }}>
-          Iniciar sesión
+          Sign In
         </div>
 
         {error && (
@@ -91,7 +91,7 @@ export default function LoginPage() {
         />
         <input
           type="password"
-          placeholder="Contraseña"
+          placeholder="Password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           required
@@ -117,7 +117,7 @@ export default function LoginPage() {
             letterSpacing: '-0.01em',
           }}
         >
-          {loading ? 'Entrando...' : 'Entrar'}
+          {loading ? 'Signing in...' : 'Sign In'}
         </button>
 
         <div style={{
@@ -126,9 +126,9 @@ export default function LoginPage() {
           fontSize: '13px',
           marginTop: '4px',
         }}>
-          ¿No tienes cuenta?{' '}
+          Don't have an account?{' '}
           <Link href="/register" style={{ color: '#ede8de', textDecoration: 'underline' }}>
-            Regístrate
+            Sign Up
           </Link>
         </div>
       </form>
