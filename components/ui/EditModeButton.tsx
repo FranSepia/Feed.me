@@ -7,8 +7,11 @@ import { useResponsive } from '@/lib/useResponsive'
 export function EditModeButton() {
   const editMode = useCanvasStore((s) => s.editMode)
   const setEditMode = useCanvasStore((s) => s.setEditMode)
+  const readOnly = useCanvasStore((s) => s.readOnly)
   const [hover, setHover] = useState(false)
   const { isMobile } = useResponsive()
+
+  if (readOnly) return null
 
   return (
     <button

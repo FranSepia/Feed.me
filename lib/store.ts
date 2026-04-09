@@ -1,6 +1,5 @@
 import { create } from 'zustand'
 import { supabase } from './supabase'
-import { getSessionId } from './sessionId'
 
 export interface NodeData {
   id: string
@@ -42,8 +41,7 @@ export function generatePositions(count: number): [number, number, number][] {
   })
 }
 
-// Screen-aware oval layout — randomized each page load.
-// Landscape screen → wider horizontal oval. Portrait → taller vertical oval.
+// Screen-aware oval layout
 function layoutPositions(count: number): [number, number, number][] {
   const aspect = typeof window !== 'undefined'
     ? window.innerWidth / window.innerHeight
@@ -109,6 +107,7 @@ const DEMO_NODES: NodeData[] = [
 ]
 
 interface CanvasStore {
+  // Canvas data
   nodes: NodeData[]
   selectedNode: string | null
   playingVideoUrl: string | null
@@ -118,6 +117,14 @@ interface CanvasStore {
   socials: Record<string, string>
   nodesLoaded: boolean
   filterTags: string[]
+
+  // Multi-user fields
+  userId: string | null       // whose canvas is currently loaded
+  readOnly: boolean           // true = public view, false = editor
+
+  // Actions
+  setUserId: (id: string | null) => void
+  setReadOnly: (v: boolean) => void
   setSelectedNode: (id: string | null) => void
   setPlayingVideoUrl: (url: string | null) => void
   setFilterTags: (tags: string[]) => void
@@ -127,7 +134,8 @@ interface CanvasStore {
   setSocial: (platform: string, url: string) => Promise<void>
   addNode: (node: Omit<NodeData, 'id' | 'position'>) => Promise<void>
   removeNode: (id: string) => Promise<void>
-  loadFromSupabase: () => Promise<void>
+  loadFromSupabase: (userId: string) => Promise<void>
+  resetCanvas: () => void
 }
 
 export const useCanvasStore = create<CanvasStore>((set, get) => ({
@@ -140,60 +148,87 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   socials: {},
   nodesLoaded: false,
   filterTags: [],
+  userId: null,
+  readOnly: false,
 
+  setUserId: (id) => set({ userId: id }),
+  setReadOnly: (v) => set({ readOnly: v, editMode: false }),
   setSelectedNode: (id) => set({ selectedNode: id }),
   setPlayingVideoUrl: (url) => set({ playingVideoUrl: url }),
   setFilterTags: (tags) => set({ filterTags: tags }),
-  setBgColor: (color) => set({ bgColor: color }),
   setShowProfilePanel: (show) => set({ showProfilePanel: show }),
-  setEditMode: (v) => set({ editMode: v }),
+  setEditMode: (v) => {
+    if (get().readOnly) return  // no edit mode in public view
+    set({ editMode: v })
+  },
 
-  // Load user's saved nodes from Supabase.
-  // If they have saved nodes → replace demo nodes.
-  // If new user → keep demo nodes so canvas isn't empty.
-  loadFromSupabase: async () => {
-    if (get().nodesLoaded) return
+  setBgColor: (color) => {
+    set({ bgColor: color })
+    // Persist to profile if this is the owner's canvas
+    const { userId, readOnly } = get()
+    if (!readOnly && userId && supabase) {
+      supabase.from('profiles').update({ bg_color: color }).eq('id', userId).then()
+    }
+  },
+
+  resetCanvas: () => set({
+    nodes: DEMO_NODES,
+    selectedNode: null,
+    playingVideoUrl: null,
+    nodesLoaded: false,
+    socials: {},
+    filterTags: [],
+    userId: null,
+    readOnly: false,
+    editMode: false,
+  }),
+
+  // Load nodes for a given user
+  loadFromSupabase: async (userId: string) => {
     const db = supabase
     if (!db) { set({ nodesLoaded: true }); return }
     try {
-      const sessionId = getSessionId()
       const { data, error } = await db
         .from('canvas_nodes')
         .select('*')
-        .eq('session_id', sessionId)
+        .eq('user_id', userId)
         .order('created_at', { ascending: true })
 
       if (error) { console.error('Supabase load error:', error); return }
 
       if (data && data.length > 0) {
         const loaded: NodeData[] = data
-          .filter((row) => row.id && row.type && row.content) // skip corrupted rows
+          .filter((row) => row.id && row.type && row.content)
           .map((row) => ({
             id: row.id,
             type: row.type,
             content: row.content,
             title: row.title ?? undefined,
             caption: row.caption ?? undefined,
+            date: row.date ?? undefined,
             tags: Array.isArray(row.tags) ? row.tags : [],
-            position: [0, 0, 0] as [number, number, number], // replaced below
+            position: [0, 0, 0] as [number, number, number],
             seed: typeof row.seed === 'number' ? row.seed : 0,
           }))
         if (loaded.length > 0) {
-          // Assign fresh screen-aware positions every page load
           const positions = layoutPositions(loaded.length)
           const withPos = loaded.map((n, i) => ({ ...n, position: positions[i] }))
-          // Rebuild socials map from saved social nodes
           const socials: Record<string, string> = {}
           withPos.forEach((n) => { if (n.type === 'social' && n.title) socials[n.title] = n.content })
           set({ nodes: withPos, socials, nodesLoaded: true })
         } else {
-          set({ nodesLoaded: true })
+          set({ nodes: [], nodesLoaded: true })
         }
       } else {
-        // New user — reposition demo nodes for this screen
-        const positions = layoutPositions(DEMO_NODES.length)
-        const demo = DEMO_NODES.map((n, i) => ({ ...n, position: positions[i] }))
-        set({ nodes: demo, nodesLoaded: true })
+        // User has no nodes yet — show empty canvas (or demo for editor)
+        const { readOnly } = get()
+        if (readOnly) {
+          set({ nodes: [], nodesLoaded: true })
+        } else {
+          const positions = layoutPositions(DEMO_NODES.length)
+          const demo = DEMO_NODES.map((n, i) => ({ ...n, position: positions[i] }))
+          set({ nodes: demo, nodesLoaded: true })
+        }
       }
     } catch (e) {
       console.error('Failed to load from Supabase:', e)
@@ -201,8 +236,10 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   },
 
   addNode: async (node) => {
+    const { readOnly, userId } = get()
+    if (readOnly || !userId) return
+
     const id = `node-${Date.now()}`
-    // Spread new nodes in a growing spiral around existing content
     const count = get().nodes.length
     const golden = Math.PI * (3 - Math.sqrt(5))
     const angle = count * golden + Math.random() * 0.8
@@ -214,16 +251,17 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     ]
     const newNode: NodeData = { ...node, id, position: pos }
 
-    // Optimistic update — show immediately
+    // Optimistic update
     set((state) => ({ nodes: [...state.nodes, newNode] }))
 
-    // Persist to Supabase
+    // Persist
     const db = supabase
     if (db) {
       try {
-        const { error } = await db.from('canvas_nodes').insert({
+        const payload = {
           id,
-          session_id: getSessionId(),
+          user_id: userId,
+          session_id: userId, // backwards compat — old column
           type: node.type,
           content: node.content,
           title: node.title ?? null,
@@ -231,15 +269,25 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
           tags: node.tags,
           position: pos,
           seed: node.seed,
-        })
-        if (error) console.error('Supabase insert error:', error)
+        }
+        console.log('[Feed.Me] Saving node:', payload.id, payload.type)
+        const { error } = await db.from('canvas_nodes').insert(payload)
+        if (error) {
+          console.error('[Feed.Me] INSERT error:', error.message, error.details, error.hint)
+          alert(`Error guardando: ${error.message}`)
+        } else {
+          console.log('[Feed.Me] Node saved OK:', payload.id)
+        }
       } catch (e) {
-        console.error('Failed to save node:', e)
+        console.error('[Feed.Me] Failed to save node:', e)
       }
     }
   },
 
   removeNode: async (id) => {
+    const { readOnly } = get()
+    if (readOnly) return
+
     const node = get().nodes.find((n) => n.id === id)
     const newSocials = { ...get().socials }
     if (node?.type === 'social' && node.title) delete newSocials[node.title]
@@ -266,6 +314,9 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   },
 
   setSocial: async (platform, url) => {
+    const { readOnly, userId } = get()
+    if (readOnly || !userId) return
+
     const nodeId = `social-${platform}`
     set((state) => {
       const nodes = state.nodes.filter(
@@ -297,14 +348,15 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       }
       return { socials: newSocials, nodes }
     })
-    // Persist to Supabase
+
+    // Persist
     const db = supabase
     if (db) {
       try {
         if (url.trim()) {
           const { error } = await db.from('canvas_nodes').upsert({
             id: nodeId,
-            session_id: getSessionId(),
+            user_id: userId,
             type: 'social',
             content: url,
             title: platform,

@@ -4,7 +4,7 @@ import { useState, useRef, useCallback } from 'react'
 import { useCanvasStore } from '@/lib/store'
 import { useResponsive } from '@/lib/useResponsive'
 import { supabase } from '@/lib/supabase'
-import { getSessionId } from '@/lib/sessionId'
+import { useAuth } from '@/lib/auth-context'
 
 type UploadType = 'image' | 'video' | 'text' | 'spotify' | null
 
@@ -146,18 +146,23 @@ export function BottomBar() {
   const videoRawFileRef = useRef<File | null>(null)
   const addNode = useCanvasStore((s) => s.addNode)
   const nodes = useCanvasStore((s) => s.nodes)
+  const readOnly = useCanvasStore((s) => s.readOnly)
   const { isMobile } = useResponsive()
+  const { user } = useAuth()
 
   // All unique tags already in the canvas
   const existingTags = Array.from(new Set(nodes.flatMap((n) => n.tags))).sort()
+
+  // Hide in read-only mode (public view)
+  if (readOnly) return null
 
   // Upload a file to Supabase Storage and return its public URL
   const uploadMedia = async (file: File): Promise<string> => {
     const db = supabase
     if (!db) throw new Error('Supabase not configured')
-    const sessionId = getSessionId()
+    if (!user) throw new Error('Not authenticated')
     const ext = file.name.split('.').pop() ?? 'bin'
-    const path = `${sessionId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+    const path = `${user.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
     const { error } = await db.storage.from('media').upload(path, file, {
       cacheControl: '31536000',
       upsert: false,
