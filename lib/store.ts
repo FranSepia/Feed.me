@@ -195,7 +195,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
         .eq('user_id', userId)
         .order('created_at', { ascending: true })
 
-      if (error) { console.error('Supabase load error:', error); return }
+      if (error) { console.error('Supabase load error:', error); set({ nodesLoaded: true }); return }
 
       if (data && data.length > 0) {
         const loaded: NodeData[] = data
@@ -233,6 +233,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       }
     } catch (e) {
       console.error('Failed to load from Supabase:', e)
+      set({ nodesLoaded: true })
     }
   },
 
@@ -262,22 +263,18 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
         const payload = {
           id,
           user_id: userId,
-          session_id: userId, // backwards compat — old column
           type: node.type,
           content: node.content,
           title: node.title ?? null,
           caption: node.caption ?? null,
+          date: node.date ?? null,
           tags: node.tags,
           position: pos,
           seed: node.seed,
         }
-        console.log('[Feed.Me] Saving node:', payload.id, payload.type)
         const { error } = await db.from('canvas_nodes').insert(payload)
         if (error) {
           console.error('[Feed.Me] INSERT error:', error.message, error.details, error.hint)
-          alert(`Error guardando: ${error.message}`)
-        } else {
-          console.log('[Feed.Me] Node saved OK:', payload.id)
         }
       } catch (e) {
         console.error('[Feed.Me] Failed to save node:', e)
