@@ -91,15 +91,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       async (event, session) => {
         const u = session?.user ?? null
         setUser(u)
-        if (u) {
-          await loadProfile(u.id)
-        } else {
-          setProfile(null)
-        }
-        // After the first event (INITIAL_SESSION), mark loading done
+
         if (event === 'INITIAL_SESSION') {
+          // Resolve loading immediately — don't block on profile fetch.
+          // If loadProfile hangs (slow DB), the spinner would freeze forever.
           clearTimeout(fallbackTimer)
+          if (u) {
+            loadProfile(u.id) // fire-and-forget for initial load
+          } else {
+            setProfile(null)
+          }
           setLoading(false)
+        } else {
+          // For subsequent events (SIGNED_IN, SIGNED_OUT, TOKEN_REFRESHED)
+          // we can await normally since there's no loading gate
+          if (u) {
+            await loadProfile(u.id)
+          } else {
+            setProfile(null)
+          }
         }
       }
     )
