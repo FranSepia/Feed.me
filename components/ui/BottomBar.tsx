@@ -8,37 +8,27 @@ import { useAuth } from '@/lib/auth-context'
 
 type UploadType = 'image' | 'video' | 'text' | 'spotify' | null
 
-// ── Google Drive helpers ──────────────────────────────────────────────────────
-function extractDriveId(url: string): string | null {
-  const patterns = [
-    /drive\.google\.com\/file\/d\/([a-zA-Z0-9_-]+)/,
-    /drive\.google\.com\/open\?id=([a-zA-Z0-9_-]+)/,
-    /drive\.google\.com\/uc\?.*id=([a-zA-Z0-9_-]+)/,
-  ]
-  for (const p of patterns) {
-    const m = url.match(p)
-    if (m) return m[1]
-  }
-  return null
+// ── Google Photos / Drive helpers ────────────────────────────────────────────
+function isGoogleMediaUrl(url: string): boolean {
+  return (
+    url.includes('photos.google.com') ||
+    url.includes('photos.app.goo.gl') ||
+    url.includes('drive.google.com')
+  )
 }
 
-function isDriveUrl(url: string): boolean {
-  return url.includes('drive.google.com')
-}
-
-// Download a Drive file via our API proxy and return a File object
-async function fetchDriveFile(url: string): Promise<File> {
+// Download a Google Photos or Drive file via our API proxy and return a File object
+async function fetchGoogleFile(url: string): Promise<File> {
   const encoded = encodeURIComponent(url)
   const res = await fetch(`/api/drive-download?url=${encoded}`)
   if (!res.ok) {
     const err = await res.json().catch(() => ({}))
-    throw new Error(err.error ?? `Drive download failed (${res.status})`)
+    throw new Error(err.error ?? `Download failed (${res.status})`)
   }
   const blob = await res.blob()
   const contentType = blob.type || 'application/octet-stream'
   const ext = contentType.split('/')[1]?.split(';')[0] ?? 'bin'
-  const id = extractDriveId(url) ?? 'drive-file'
-  return new File([blob], `drive-${id}.${ext}`, { type: contentType })
+  return new File([blob], `google-media.${ext}`, { type: contentType })
 }
 
 // ── SVG outline icons (pure white stroke, no fill) ──────────────────────────
@@ -238,13 +228,13 @@ export function BottomBar() {
 
   const handleImageUrlChange = async (value: string) => {
     setDriveError('')
-    if (isDriveUrl(value)) {
+    if (isGoogleMediaUrl(value)) {
       setDriveLoading(true)
       try {
-        const file = await fetchDriveFile(value)
+        const file = await fetchGoogleFile(value)
         addImageFiles([file])
       } catch (err: any) {
-        setDriveError(err.message ?? 'Error downloading from Drive')
+        setDriveError(err.message ?? 'Error al descargar de Google Photos')
       } finally {
         setDriveLoading(false)
       }
@@ -255,15 +245,15 @@ export function BottomBar() {
 
   const handleVideoUrlChange = async (value: string) => {
     setDriveError('')
-    if (isDriveUrl(value)) {
+    if (isGoogleMediaUrl(value)) {
       setDriveLoading(true)
       try {
-        const file = await fetchDriveFile(value)
+        const file = await fetchGoogleFile(value)
         setVideoFilesState(prev => [...prev, file])
         setVideoFile(URL.createObjectURL(file))
         setVideoFileName(file.name)
       } catch (err: any) {
-        setDriveError(err.message ?? 'Error downloading from Drive')
+        setDriveError(err.message ?? 'Error al descargar de Google Photos')
       } finally {
         setDriveLoading(false)
       }
@@ -479,15 +469,15 @@ export function BottomBar() {
                 </div>
               )}
 
-              {/* URL / Drive URL input */}
+              {/* URL / Google Photos input */}
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <div style={{ flex: 1, height: '1px', background: 'rgba(0,0,0,0.08)' }} />
-                <span style={{ color: 'rgba(0,0,0,0.35)', fontSize: '11px' }}>or paste URL / Drive link</span>
+                <span style={{ color: 'rgba(0,0,0,0.35)', fontSize: '11px' }}>or paste URL / Google Photos link</span>
                 <div style={{ flex: 1, height: '1px', background: 'rgba(0,0,0,0.08)' }} />
               </div>
               <div style={{ position: 'relative' }}>
                 <input
-                  placeholder="https://... or Google Drive link"
+                  placeholder="https://... or Google Photos link"
                   value={imageUrl}
                   onChange={(e) => handleImageUrlChange(e.target.value)}
                   style={inputStyle}
@@ -582,11 +572,11 @@ export function BottomBar() {
               )}
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <div style={{ flex: 1, height: '1px', background: 'rgba(0,0,0,0.08)' }} />
-                <span style={{ color: 'rgba(0,0,0,0.35)', fontSize: '11px' }}>or YouTube / Google Drive URL</span>
+                <span style={{ color: 'rgba(0,0,0,0.35)', fontSize: '11px' }}>or YouTube / Google Photos link</span>
                 <div style={{ flex: 1, height: '1px', background: 'rgba(0,0,0,0.08)' }} />
               </div>
               <div style={{ position: 'relative' }}>
-                <input placeholder="https://youtube.com/watch?v=... or Drive link" value={videoFile ? '' : videoUrl} onChange={(e) => handleVideoUrlChange(e.target.value)} style={inputStyle} />
+                <input placeholder="https://youtube.com/watch?v=... or Google Photos link" value={videoFile ? '' : videoUrl} onChange={(e) => handleVideoUrlChange(e.target.value)} style={inputStyle} />
                 {driveLoading && activeType === 'video' && (
                   <div style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)' }}>
                     <Spinner />
