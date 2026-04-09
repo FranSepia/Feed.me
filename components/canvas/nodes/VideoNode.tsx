@@ -46,6 +46,7 @@ export function VideoNode({ node, isSelected, isDimmed, isOrbit, targetPosition 
   const bgColor = useCanvasStore((s) => s.bgColor)
   const light = isLightBg(bgColor)
   const [hovered, setHovered] = useState(false)
+  const [videoAspect, setVideoAspect] = useState(16 / 9)
 
   const ytId = getYouTubeId(node.content)
   const isYT = !!ytId
@@ -92,15 +93,15 @@ export function VideoNode({ node, isSelected, isDimmed, isOrbit, targetPosition 
     }
   }
 
-  // Fixed card dimensions — thumbnail and iframe share the same size so there's no jump
-  const W = 320
+  // Card dimensions — YouTube fixed 16:9; local video uses detected aspect ratio
   const H = 180
+  const W = isYT ? 320 : Math.round(H * videoAspect)
 
   return (
     <animated.mesh
       ref={meshRef}
       position={springs.position as unknown as [number,number,number]}
-      scale={springs.scale.to((s) => [s * 5.3, s * 3, 1] as [number,number,number])}
+      scale={springs.scale.to((s) => [s * 3 * (isYT ? 16/9 : videoAspect), s * 3, 1] as [number,number,number])}
       onClick={handleClick}
       onPointerOver={(e: { stopPropagation: () => void }) => { e.stopPropagation(); setHovered(true) }}
       onPointerOut={() => setHovered(false)}
@@ -216,7 +217,12 @@ export function VideoNode({ node, isSelected, isDimmed, isOrbit, targetPosition 
                 preload="metadata"
                 playsInline
                 loop
-                crossOrigin="anonymous"
+                onLoadedMetadata={(e) => {
+                  const v = e.currentTarget
+                  if (v.videoWidth && v.videoHeight) {
+                    setVideoAspect(v.videoWidth / v.videoHeight)
+                  }
+                }}
               />
               {!isSelected && !autoPlay && (
                 <>

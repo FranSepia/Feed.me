@@ -47,7 +47,32 @@ export function CameraControls() {
           freeTarget.current.copy(targetPosition.current)
           wasZoomed.current = true
         }
-        const d = ZOOM_DIST[node.type] ?? (isMobile ? 13 : 7.5)
+        let d = ZOOM_DIST[node.type] ?? (isMobile ? 13 : 7.5)
+
+        // Zoom out enough to keep all orbit nodes on screen
+        const related = nodes.filter(
+          (n) => n.id !== selectedNodeId && n.tags.some((t) => node.tags.includes(t))
+        )
+        if (related.length > 0) {
+          const count = related.length
+          const nodeWidth = isMobile ? 2.0 : 3.2
+          const minR = isMobile ? 5.0 : 7.0
+          const MAX_R = isMobile ? 9.0 : 15.0
+          const circumR = (count * nodeWidth * 1.1) / (2 * Math.PI)
+          const R = Math.min(MAX_R, Math.max(minR, circumR))
+          const Ry = isMobile ? R * 1.10 : R * 0.55
+          const Rx = isMobile ? R * 0.65 : R
+          const fovV = isMobile ? 65 : 60
+          const tanHalfFovV = Math.tan((fovV / 2) * Math.PI / 180)
+          const aspect = typeof window !== 'undefined' ? window.innerWidth / window.innerHeight : 1.6
+          const tanHalfFovH = aspect * tanHalfFovV
+          const nodeSize = 2.0
+          // Orbit nodes sit ~5 units behind selected (z-5), so effective depth = d + 5
+          const dVert  = (Ry + nodeSize) / tanHalfFovV - 5
+          const dHoriz = (Rx + nodeSize) / tanHalfFovH - 5
+          d = Math.max(d, dVert, dHoriz) * 1.1
+        }
+
         targetPosition.current.set(
           node.position[0],
           node.position[1],
