@@ -380,7 +380,8 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     if (db) {
       try {
         // Always delete the old row first (no-op if it doesn't exist)
-        await db.from('canvas_nodes').delete().eq('id', nodeId)
+        const { error: delErr } = await db.from('canvas_nodes').delete().eq('id', nodeId)
+        if (delErr) throw new Error(delErr.message)
         if (url.trim()) {
           const { error } = await db.from('canvas_nodes').insert({
             id: nodeId,
@@ -394,10 +395,11 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
             position: [0, 0, 0],
             seed: 0,
           })
-          if (error) console.error('Supabase insert social error:', error)
+          if (error) throw new Error(error.message)
         }
       } catch (e) {
         console.error('Failed to save social:', e)
+        throw e  // re-throw so ProfilePanel can show the error
       }
     }
   },

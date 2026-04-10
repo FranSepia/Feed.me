@@ -28,6 +28,7 @@ export function ProfilePanel() {
   const [localSocials, setLocalSocials] = useState<Record<string, string>>(socials)
   const [socialsSaving, setSocialsSaving] = useState(false)
   const [socialsSaved, setSocialsSaved] = useState(false)
+  const [socialsError, setSocialsError] = useState<string | null>(null)
 
   // Sync local inputs when store socials load (e.g. after page refresh)
   useEffect(() => { setLocalSocials(socials) }, [socials])
@@ -303,12 +304,18 @@ export function ProfilePanel() {
             <button
               onClick={async () => {
                 setSocialsSaving(true)
-                for (const p of SOCIAL_PLATFORMS) {
-                  await setSocial(p.key, localSocials[p.key] ?? '')
+                setSocialsError(null)
+                try {
+                  for (const p of SOCIAL_PLATFORMS) {
+                    await setSocial(p.key, localSocials[p.key] ?? '')
+                  }
+                  setSocialsSaved(true)
+                  setTimeout(() => setSocialsSaved(false), 2000)
+                } catch (e: unknown) {
+                  setSocialsError(e instanceof Error ? e.message : 'Error al guardar')
+                } finally {
+                  setSocialsSaving(false)
                 }
-                setSocialsSaving(false)
-                setSocialsSaved(true)
-                setTimeout(() => setSocialsSaved(false), 2000)
               }}
               disabled={socialsSaving}
               style={{
@@ -316,17 +323,21 @@ export function ProfilePanel() {
                 padding: '10px',
                 borderRadius: '50px',
                 border: 'none',
-                background: socialsSaved
+                background: socialsError
+                  ? 'rgba(220,50,50,0.12)'
+                  : socialsSaved
                   ? 'rgba(60,180,100,0.15)'
                   : 'rgba(50,54,78,0.08)',
-                color: socialsSaved ? 'rgba(40,140,80,0.9)' : 'rgba(50,54,78,0.7)',
+                color: socialsError
+                  ? 'rgba(200,50,50,0.9)'
+                  : socialsSaved ? 'rgba(40,140,80,0.9)' : 'rgba(50,54,78,0.7)',
                 fontSize: '13px',
                 fontWeight: 600,
                 cursor: socialsSaving ? 'not-allowed' : 'pointer',
                 transition: 'all 0.2s',
               }}
             >
-              {socialsSaving ? 'Guardando…' : socialsSaved ? '✓ Guardado' : 'Guardar'}
+              {socialsSaving ? 'Guardando…' : socialsError ? `✕ ${socialsError}` : socialsSaved ? '✓ Guardado' : 'Guardar'}
             </button>
           </div>
         )}
