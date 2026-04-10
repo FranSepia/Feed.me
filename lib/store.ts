@@ -375,25 +375,26 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       return { socials: newSocials, nodes }
     })
 
-    // Persist
+    // Persist — use DELETE + INSERT to avoid needing UPDATE RLS policy
     const db = supabase
     if (db) {
       try {
+        // Always delete the old row first (no-op if it doesn't exist)
+        await db.from('canvas_nodes').delete().eq('id', nodeId)
         if (url.trim()) {
-          const { error } = await db.from('canvas_nodes').upsert({
+          const { error } = await db.from('canvas_nodes').insert({
             id: nodeId,
             user_id: userId,
             type: 'social',
             content: url,
             title: platform,
+            caption: null,
+            date: null,
             tags: ['social', platform],
             position: [0, 0, 0],
             seed: 0,
           })
-          if (error) console.error('Supabase upsert social error:', error)
-        } else {
-          const { error } = await db.from('canvas_nodes').delete().eq('id', nodeId)
-          if (error) console.error('Supabase delete social error:', error)
+          if (error) console.error('Supabase insert social error:', error)
         }
       } catch (e) {
         console.error('Failed to save social:', e)
