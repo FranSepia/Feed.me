@@ -21,7 +21,7 @@ export function ProfilePanel() {
   const bgColor = useCanvasStore((s) => s.bgColor)
   const setBgColor = useCanvasStore((s) => s.setBgColor)
   const socials = useCanvasStore((s) => s.socials)
-  const setSocial = useCanvasStore((s) => s.setSocial)
+  const setSocials = useCanvasStore((s) => s.setSocials)
   const readOnly = useCanvasStore((s) => s.readOnly)
   const [activeTab, setActiveTab] = useState<Tab>('profile')
   const [avatarUploading, setAvatarUploading] = useState(false)
@@ -306,9 +306,7 @@ export function ProfilePanel() {
                 setSocialsSaving(true)
                 setSocialsError(null)
                 try {
-                  for (const p of SOCIAL_PLATFORMS) {
-                    await setSocial(p.key, localSocials[p.key] ?? '')
-                  }
+                  await setSocials(localSocials)
                   setSocialsSaved(true)
                   setTimeout(() => setSocialsSaved(false), 2000)
                 } catch (e: unknown) {

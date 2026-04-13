@@ -132,6 +132,7 @@ interface CanvasStore {
   setShowProfilePanel: (show: boolean) => void
   setEditMode: (v: boolean) => void
   setSocial: (platform: string, url: string) => Promise<void>
+  setSocials: (allSocials: Record<string, string>) => Promise<void>
   addNode: (node: Omit<NodeData, 'id' | 'position'>) => Promise<void>
   removeNode: (id: string) => Promise<void>
   updateNode: (id: string, updates: Partial<NodeData>) => Promise<void>
@@ -184,23 +185,66 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     editMode: false,
   }),
 
+  // Build social canvas nodes from a socials map (for local display)
+  // (defined outside store actions so it can be called from loadFromSupabase)
+
   // Load nodes for a given user
   loadFromSupabase: async (userId: string) => {
     const db = supabase
     if (!db) { set({ nodesLoaded: true }); return }
     try {
-      const { data, error } = await db
-        .from('canvas_nodes')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: true })
+      // Load canvas nodes and profile socials in parallel
+      const [nodesResult, profileResult] = await Promise.all([
+        db.from('canvas_nodes').select('*').eq('user_id', userId).order('created_at', { ascending: true }),
+        db.from('profiles').select('socials').eq('id', userId).single(),
+      ])
 
-      if (error) { console.error('Supabase load error:', error); set({ nodesLoaded: true }); return }
+      if (nodesResult.error) { console.error('Supabase load error:', nodesResult.error); set({ nodesLoaded: true }); return }
 
-      if (data && data.length > 0) {
-        const loaded: NodeData[] = data
-          .filter((row) => row.id && row.type && row.content)
-          .map((row) => ({
+      const data = nodesResult.data ?? []
+      // Prefer profiles.socials (new approach); fall back to canvas_nodes social rows (legacy)
+      const profileSocials: Record<string, string> = profileResult.data?.socials ?? {}
+      const useProfileSocials = Object.keys(profileSocials).length > 0
+
+      // Only load non-social canvas_nodes (social display is driven by profileSocials / legacy)
+      const regularRows = data.filter(row => row.type !== 'social')
+      // Legacy social rows — only used when profiles.socials is empty
+      const legacySocials: Record<string, string> = {}
+      if (!useProfileSocials) {
+        data.filter(r => r.type === 'social' && r.title && r.content)
+            .forEach(r => { legacySocials[r.title] = r.content })
+      }
+
+      const socials = useProfileSocials ? profileSocials : legacySocials
+
+      // Build social canvas nodes for display
+      const socialNodes: NodeData[] = Object.entries(socials)
+        .filter(([, url]) => url.trim())
+        .map(([platform, url]) => {
+          const idx = SOCIAL_PLATFORMS.findIndex(p => p.key === platform)
+          const i = idx >= 0 ? idx : 0
+          const golden = Math.PI * (3 - Math.sqrt(5))
+          const angle = i * golden * 2.5
+          const radius = 14 + i * 1.2
+          return {
+            id: `${userId}-social-${platform}`,
+            type: 'social' as const,
+            content: url,
+            title: platform,
+            tags: ['social', platform],
+            position: [
+              Math.cos(angle) * radius,
+              Math.sin(angle) * radius * 0.38,
+              Math.sin(angle * 0.6) * 5,
+            ] as [number, number, number],
+            seed: i,
+          }
+        })
+
+      if (regularRows.length > 0 || socialNodes.length > 0) {
+        const loaded: NodeData[] = regularRows
+          .filter(row => row.id && row.type && row.content)
+          .map(row => ({
             id: row.id,
             type: row.type,
             content: row.content,
@@ -211,24 +255,18 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
             position: [0, 0, 0] as [number, number, number],
             seed: typeof row.seed === 'number' ? row.seed : 0,
           }))
-        if (loaded.length > 0) {
-          const positions = layoutPositions(loaded.length)
-          const withPos = loaded.map((n, i) => ({ ...n, position: positions[i] }))
-          const socials: Record<string, string> = {}
-          withPos.forEach((n) => { if (n.type === 'social' && n.title) socials[n.title] = n.content })
-          set({ nodes: withPos, socials, nodesLoaded: true })
-        } else {
-          set({ nodes: [], nodesLoaded: true })
-        }
+        const positions = layoutPositions(loaded.length)
+        const withPos = loaded.map((n, i) => ({ ...n, position: positions[i] }))
+        set({ nodes: [...withPos, ...socialNodes], socials, nodesLoaded: true })
       } else {
-        // User has no nodes yet — show empty canvas (or demo for editor)
+        // No nodes yet — show demo for editor, empty for public view
         const { readOnly } = get()
         if (readOnly) {
-          set({ nodes: [], nodesLoaded: true })
+          set({ nodes: socialNodes, socials, nodesLoaded: true })
         } else {
           const positions = layoutPositions(DEMO_NODES.length)
           const demo = DEMO_NODES.map((n, i) => ({ ...n, position: positions[i] }))
-          set({ nodes: demo, nodesLoaded: true })
+          set({ nodes: demo, socials, nodesLoaded: true })
         }
       }
     } catch (e) {
@@ -339,75 +377,62 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     }
   },
 
-  setSocial: async (platform, url) => {
+  // Save ALL socials at once — one UPDATE to profiles.socials (no canvas_nodes complexity)
+  setSocials: async (allSocials: Record<string, string>) => {
     const { readOnly, userId } = get()
     if (readOnly || !userId) return
 
-    // Use a user-scoped ID to avoid conflicts between different users
-    const nodeId = `${userId}-social-${platform}`
+    // Clean: remove empty values
+    const clean: Record<string, string> = {}
+    for (const [k, v] of Object.entries(allSocials)) {
+      if (v.trim()) clean[k] = v.trim()
+    }
 
-    set((state) => {
-      const nodes = state.nodes.filter(
-        (n) => !(n.type === 'social' && n.title === platform)
-      )
-      const newSocials = { ...state.socials }
-      if (url.trim()) {
-        newSocials[platform] = url
-        const idx = SOCIAL_PLATFORMS.findIndex((p) => p.key === platform)
-        const golden = Math.PI * (3 - Math.sqrt(5))
-        const angle  = idx * golden * 2.5
-        const radius = 14 + idx * 1.2
-        const pos: [number, number, number] = [
+    // Build social canvas nodes for display
+    const socialNodes: NodeData[] = Object.entries(clean).map(([platform, url]) => {
+      const idx = SOCIAL_PLATFORMS.findIndex(p => p.key === platform)
+      const i = idx >= 0 ? idx : 0
+      const golden = Math.PI * (3 - Math.sqrt(5))
+      const angle = i * golden * 2.5
+      const radius = 14 + i * 1.2
+      return {
+        id: `${userId}-social-${platform}`,
+        type: 'social' as const,
+        content: url,
+        title: platform,
+        tags: ['social', platform],
+        position: [
           Math.cos(angle) * radius,
           Math.sin(angle) * radius * 0.38,
           Math.sin(angle * 0.6) * 5,
-        ]
-        nodes.push({
-          id: nodeId,
-          type: 'social',
-          content: url,
-          title: platform,
-          tags: ['social', platform],
-          position: pos,
-          seed: idx,
-        })
-      } else {
-        delete newSocials[platform]
+        ] as [number, number, number],
+        seed: i,
       }
-      return { socials: newSocials, nodes }
     })
 
-    // Persist — DELETE by user+type+title (avoids conflicts between users),
-    // then INSERT with a user-scoped ID
-    const db = supabase
-    if (db) {
-      try {
-        // Delete any existing social node for this user+platform (old or new ID format)
-        const { error: delErr } = await db.from('canvas_nodes').delete()
-          .eq('user_id', userId)
-          .eq('type', 'social')
-          .eq('title', platform)
-        if (delErr) throw new Error(delErr.message)
+    // Optimistic update
+    set(state => ({
+      nodes: [...state.nodes.filter(n => n.type !== 'social'), ...socialNodes],
+      socials: clean,
+    }))
 
-        if (url.trim()) {
-          const { error } = await db.from('canvas_nodes').insert({
-            id: nodeId,
-            user_id: userId,
-            type: 'social',
-            content: url,
-            title: platform,
-            caption: null,
-            date: null,
-            tags: ['social', platform],
-            position: [0, 0, 0],
-            seed: 0,
-          })
-          if (error) throw new Error(error.message)
-        }
-      } catch (e) {
-        console.error('Failed to save social:', e)
-        throw e  // re-throw so ProfilePanel can show the error
-      }
+    // Persist: single UPDATE to profiles.socials — reliable, no RLS DELETE issues
+    const db = supabase
+    if (!db) return
+    const { error } = await db.from('profiles').update({ socials: clean }).eq('id', userId)
+    if (error) throw new Error(error.message)
+  },
+
+  // Keep setSocial for individual changes (delegates to setSocials internally)
+  setSocial: async (platform, url) => {
+    const { readOnly, userId } = get()
+    if (readOnly || !userId) return
+    const current = { ...get().socials }
+    if (url.trim()) {
+      current[platform] = url.trim()
+    } else {
+      delete current[platform]
     }
+    await get().setSocials(current)
   },
 }))
