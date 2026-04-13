@@ -11,6 +11,10 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   title: 'Feed.Me',
   description: 'Your personal 3D content canvas',
+  icons: {
+    icon: '/icons/FeedMe_logo-removebg-32x32.png',
+    apple: '/icons/FeedMe_logo-removebg-32x32.png',
+  },
 }
 
 export default function RootLayout({
