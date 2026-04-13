@@ -373,7 +373,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     }
   },
 
-  // Save ALL socials at once — single INSERT to canvas_nodes (same as adding images, always works)
+  // Save ALL socials at once — raw fetch to bypass any Supabase JS client lock issues
   setSocials: async (allSocials: Record<string, string>) => {
     const { readOnly, userId } = get()
     if (readOnly || !userId) return
@@ -412,10 +412,19 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       socials: clean,
     }))
 
-    // Persist: INSERT a socials_config row (same mechanism as addNode — no DELETE, no PATCH)
-    const db = supabase
-    if (!db) return
-    const { error } = await db.from('canvas_nodes').insert({
+    // Persist via raw fetch — avoids any internal Supabase JS client lock/hang
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    if (!supabaseUrl || !anonKey) throw new Error('Supabase env vars not set')
+
+    // Get auth token (fall back to anon key if no session)
+    let token = anonKey
+    try {
+      const { data } = await supabase!.auth.getSession()
+      if (data.session?.access_token) token = data.session.access_token
+    } catch { /* use anon key */ }
+
+    const payload = {
       id: `${userId}-socials-${Date.now()}`,
       user_id: userId,
       type: 'socials_config',
@@ -423,11 +432,26 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       title: 'socials',
       caption: null,
       date: null,
-      tags: [],
-      position: [0, 0, 0],
+      tags: [] as string[],
+      position: [0, 0, 0] as number[],
       seed: 0,
+    }
+
+    const res = await fetch(`${supabaseUrl}/rest/v1/canvas_nodes`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': anonKey,
+        'Authorization': `Bearer ${token}`,
+        'Prefer': 'return=minimal',
+      },
+      body: JSON.stringify(payload),
     })
-    if (error) throw new Error(error.message)
+
+    if (!res.ok) {
+      const text = await res.text()
+      throw new Error(`Save failed: ${res.status} ${text}`)
+    }
   },
 
   // Keep setSocial for individual changes (delegates to setSocials internally)

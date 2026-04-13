@@ -117,7 +117,7 @@ export function CameraControls() {
         const dy = e.touches[0].clientY - e.touches[1].clientY
         const dist = Math.sqrt(dx * dx + dy * dy)
         if (lastPinchDist.current !== null) {
-          const delta = (lastPinchDist.current - dist) * 0.05
+          const delta = (lastPinchDist.current - dist) * 0.18
           freeTarget.current.z = THREE.MathUtils.clamp(freeTarget.current.z + delta, -10, maxZ)
           targetPosition.current.z = freeTarget.current.z
         }
@@ -126,8 +126,8 @@ export function CameraControls() {
       }
 
       if (!isDragging.current || e.touches.length !== 1) return
-      const dx = (e.touches[0].clientX - lastMouse.current.x) * 0.02
-      const dy = (e.touches[0].clientY - lastMouse.current.y) * 0.02
+      const dx = (e.touches[0].clientX - lastMouse.current.x) * 0.06
+      const dy = (e.touches[0].clientY - lastMouse.current.y) * 0.06
       targetPosition.current.x -= dx
       targetPosition.current.y += dy
       freeTarget.current.x = targetPosition.current.x
@@ -155,7 +155,7 @@ export function CameraControls() {
   }, [gl])
 
   useFrame(() => {
-    currentPosition.current.lerp(targetPosition.current, 0.07)
+    currentPosition.current.lerp(targetPosition.current, isMobile ? 0.14 : 0.08)
     camera.position.copy(currentPosition.current)
   })
 

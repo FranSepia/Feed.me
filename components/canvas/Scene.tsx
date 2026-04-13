@@ -16,7 +16,9 @@ function seededRandom(seed: number) {
   return x - Math.floor(x)
 }
 
-// Orbit layout when a node is selected
+// Orbit layout when a node is selected — all nodes scatter at the same Z,
+// randomly placed across the visible area, with minimum-distance enforcement
+// to prevent overlapping.
 function computeOrbitPositions(
   nodes: NodeData[],
   selectedId: string | null
@@ -25,48 +27,49 @@ function computeOrbitPositions(
   const sel = nodes.find((n) => n.id === selectedId)
   if (!sel) return {}
 
-  const related = nodes.filter(
-    (n) => n.id !== selectedId && n.tags.some((t) => sel.tags.includes(t))
-  )
-  const unrelated = nodes.filter(
-    (n) => n.id !== selectedId && !n.tags.some((t) => sel.tags.includes(t))
-  )
-
+  const others = nodes.filter((n) => n.id !== selectedId)
   const result: Record<string, [number, number, number]> = {}
   result[selectedId] = sel.position
 
-  // Place related nodes randomly across the full visible screen area.
-  // We compute the viewport bounds at orbit depth (sel.z - 5) using the
-  // default camera zoom for an image node — so no zoom-out is needed.
-  const aspect  = typeof window !== 'undefined' ? window.innerWidth / window.innerHeight : 1.6
-  const zoomD   = isMobile ? 13 : 7.5          // matches CameraControls ZOOM_DIST image
-  const depth   = zoomD + 5                    // camera at sel.z+zoomD, orbit at sel.z-5
-  const fovV    = isMobile ? 65 : 60
-  const halfH   = depth * Math.tan((fovV / 2) * Math.PI / 180) * 0.80  // 80% inset
-  const halfW   = halfH * aspect
-  const minDist = isMobile ? 2.5 : 3.5         // exclusion zone around selected node
+  const aspect = typeof window !== 'undefined' ? window.innerWidth / window.innerHeight : 1.6
+  const zoomD  = isMobile ? 13 : 7.5
+  // Compute half-extents of the visible area at the selected node's depth
+  const depth  = zoomD + 2
+  const fovV   = isMobile ? 65 : 60
+  const halfH  = depth * Math.tan((fovV / 2) * Math.PI / 180) * 0.82
+  const halfW  = halfH * aspect
+  // Minimum separation between node centres (scaled-down orbit size ≈ 3 units)
+  const minDist = isMobile ? 4.2 : 5.0
 
-  related.forEach((node) => {
-    // Independent seeded random for x and y — no circular pattern
-    let x = (seededRandom(node.seed * 6 + 1) * 2 - 1) * halfW
-    let y = (seededRandom(node.seed * 4 + 3) * 2 - 1) * halfH
-    // Push away from center if too close to selected node
-    const dist = Math.sqrt(x * x + y * y)
-    if (dist < minDist) { x = x * minDist / dist; y = y * minDist / dist }
-    result[node.id] = [
-      sel.position[0] + x,
-      sel.position[1] + y,
-      sel.position[2] - 5,
-    ]
-  })
+  // Start with selected node occupying the centre
+  const placed: [number, number][] = [[0, 0]]
 
-  unrelated.forEach((node) => {
-    const dx = node.position[0] - sel.position[0] || 0.1
-    const dy = node.position[1] - sel.position[1] || 0.1
+  others.forEach((node) => {
+    let bx = 0, by = 0
+    let found = false
+
+    // Try up to 40 seeded positions; pick the first that doesn't overlap
+    for (let attempt = 0; attempt < 40 && !found; attempt++) {
+      const cx = (seededRandom(node.seed * 7 + attempt * 17 + 1) * 2 - 1) * halfW
+      const cy = (seededRandom(node.seed * 5 + attempt * 13 + 3) * 2 - 1) * halfH
+      const tooClose = placed.some(([px, py]) =>
+        Math.sqrt((cx - px) ** 2 + (cy - py) ** 2) < minDist
+      )
+      if (!tooClose) { bx = cx; by = cy; found = true }
+    }
+    if (!found) {
+      // Fallback: use raw seeded position (no overlap guarantee but no hang)
+      bx = (seededRandom(node.seed * 7 + 1) * 2 - 1) * halfW
+      by = (seededRandom(node.seed * 5 + 3) * 2 - 1) * halfH
+    }
+    placed.push([bx, by])
+
+    // Tiny Z jitter (±0.8) — visually natural, never "in front of" or "behind"
+    const zJitter = (seededRandom(node.seed * 3 + 9) - 0.5) * 1.6
     result[node.id] = [
-      sel.position[0] + dx * 1.4,
-      sel.position[1] + dy * 1.4,
-      sel.position[2] - 30,
+      sel.position[0] + bx,
+      sel.position[1] + by,
+      sel.position[2] + zJitter,
     ]
   })
 
@@ -146,7 +149,7 @@ export function Scene() {
         const filterDimmed = filterActive && !selectedNode && !matchesFilter
 
         const isDimmed = orbitDimmed || filterDimmed
-        const isOrbit = !isSelected && selectedNode !== null && isRelated
+        const isOrbit = !isSelected && selectedNode !== null
 
         // Priority: orbit positions > perimeter positions > default position
         const targetPosition =
