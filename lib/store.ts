@@ -185,39 +185,33 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     editMode: false,
   }),
 
-  // Build social canvas nodes from a socials map (for local display)
-  // (defined outside store actions so it can be called from loadFromSupabase)
-
   // Load nodes for a given user
   loadFromSupabase: async (userId: string) => {
     const db = supabase
     if (!db) { set({ nodesLoaded: true }); return }
     try {
-      // Load canvas nodes and profile socials in parallel
-      const [nodesResult, profileResult] = await Promise.all([
-        db.from('canvas_nodes').select('*').eq('user_id', userId).order('created_at', { ascending: true }),
-        db.from('profiles').select('socials').eq('id', userId).single(),
-      ])
+      const { data, error } = await db
+        .from('canvas_nodes')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: true })
 
-      if (nodesResult.error) { console.error('Supabase load error:', nodesResult.error); set({ nodesLoaded: true }); return }
+      if (error) { console.error('Supabase load error:', error); set({ nodesLoaded: true }); return }
 
-      const data = nodesResult.data ?? []
-      // Prefer profiles.socials (new approach); fall back to canvas_nodes social rows (legacy)
-      const profileSocials: Record<string, string> = profileResult.data?.socials ?? {}
-      const useProfileSocials = Object.keys(profileSocials).length > 0
+      const allRows = data ?? []
 
-      // Only load non-social canvas_nodes (social display is driven by profileSocials / legacy)
-      const regularRows = data.filter(row => row.type !== 'social')
-      // Legacy social rows — only used when profiles.socials is empty
-      const legacySocials: Record<string, string> = {}
-      if (!useProfileSocials) {
-        data.filter(r => r.type === 'social' && r.title && r.content)
-            .forEach(r => { legacySocials[r.title] = r.content })
+      // Socials are saved as a special 'socials_config' row — take the most recent one
+      const socialsRow = [...allRows].reverse().find(r => r.type === 'socials_config')
+      let socials: Record<string, string> = {}
+      if (socialsRow?.content) {
+        try { socials = JSON.parse(socialsRow.content) } catch { /* ignore */ }
+      } else {
+        // Legacy: socials were individual 'social' type nodes
+        allRows.filter(r => r.type === 'social' && r.title && r.content)
+               .forEach(r => { socials[r.title] = r.content })
       }
 
-      const socials = useProfileSocials ? profileSocials : legacySocials
-
-      // Build social canvas nodes for display
+      // Build social canvas nodes for display (fixed positions, not included in layout)
       const socialNodes: NodeData[] = Object.entries(socials)
         .filter(([, url]) => url.trim())
         .map(([platform, url]) => {
@@ -241,6 +235,9 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
           }
         })
 
+      // Regular nodes: skip socials_config rows and legacy social rows (handled above)
+      const regularRows = allRows.filter(r => r.type !== 'socials_config' && r.type !== 'social')
+
       if (regularRows.length > 0 || socialNodes.length > 0) {
         const loaded: NodeData[] = regularRows
           .filter(row => row.id && row.type && row.content)
@@ -259,7 +256,6 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
         const withPos = loaded.map((n, i) => ({ ...n, position: positions[i] }))
         set({ nodes: [...withPos, ...socialNodes], socials, nodesLoaded: true })
       } else {
-        // No nodes yet — show demo for editor, empty for public view
         const { readOnly } = get()
         if (readOnly) {
           set({ nodes: socialNodes, socials, nodesLoaded: true })
@@ -377,12 +373,12 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     }
   },
 
-  // Save ALL socials at once — one UPDATE to profiles.socials (no canvas_nodes complexity)
+  // Save ALL socials at once — single INSERT to canvas_nodes (same as adding images, always works)
   setSocials: async (allSocials: Record<string, string>) => {
     const { readOnly, userId } = get()
     if (readOnly || !userId) return
 
-    // Clean: remove empty values
+    // Keep only non-empty values
     const clean: Record<string, string> = {}
     for (const [k, v] of Object.entries(allSocials)) {
       if (v.trim()) clean[k] = v.trim()
@@ -416,27 +412,22 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       socials: clean,
     }))
 
-    // Persist: upsert uses POST (not PATCH), avoids networks that block PATCH.
-    // 10-second timeout so the button never freezes forever.
+    // Persist: INSERT a socials_config row (same mechanism as addNode — no DELETE, no PATCH)
     const db = supabase
     if (!db) return
-
-    let _timer: ReturnType<typeof setTimeout>
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      _timer = setTimeout(
-        () => reject(new Error('La petición tardó demasiado — revisa tu conexión')),
-        10000
-      )
+    const { error } = await db.from('canvas_nodes').insert({
+      id: `${userId}-socials-${Date.now()}`,
+      user_id: userId,
+      type: 'socials_config',
+      content: JSON.stringify(clean),
+      title: 'socials',
+      caption: null,
+      date: null,
+      tags: [],
+      position: [0, 0, 0],
+      seed: 0,
     })
-    try {
-      const result = await Promise.race([
-        db.from('profiles').upsert({ id: userId, socials: clean }, { onConflict: 'id' }),
-        timeoutPromise,
-      ])
-      if (result.error) throw new Error(result.error.message)
-    } finally {
-      clearTimeout(_timer!)
-    }
+    if (error) throw new Error(error.message)
   },
 
   // Keep setSocial for individual changes (delegates to setSocials internally)
