@@ -416,11 +416,27 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       socials: clean,
     }))
 
-    // Persist: single UPDATE to profiles.socials — reliable, no RLS DELETE issues
+    // Persist: upsert uses POST (not PATCH), avoids networks that block PATCH.
+    // 10-second timeout so the button never freezes forever.
     const db = supabase
     if (!db) return
-    const { error } = await db.from('profiles').update({ socials: clean }).eq('id', userId)
-    if (error) throw new Error(error.message)
+
+    let _timer: ReturnType<typeof setTimeout>
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      _timer = setTimeout(
+        () => reject(new Error('La petición tardó demasiado — revisa tu conexión')),
+        10000
+      )
+    })
+    try {
+      const result = await Promise.race([
+        db.from('profiles').upsert({ id: userId, socials: clean }, { onConflict: 'id' }),
+        timeoutPromise,
+      ])
+      if (result.error) throw new Error(result.error.message)
+    } finally {
+      clearTimeout(_timer!)
+    }
   },
 
   // Keep setSocial for individual changes (delegates to setSocials internally)
