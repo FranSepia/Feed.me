@@ -41,25 +41,39 @@ export function generatePositions(count: number): [number, number, number][] {
   })
 }
 
-// Screen-aware oval layout
+// Random layout with rejection sampling — no overlaps, different every page load.
+// Each node tries up to 80 random positions; keeps the best (furthest from all others).
 function layoutPositions(count: number): [number, number, number][] {
-  const aspect = typeof window !== 'undefined'
-    ? window.innerWidth / window.innerHeight
-    : 1.6
-  const base   = Math.sqrt(count) * 3.2 + 6
-  const Rx     = aspect >= 1 ? base * Math.min(aspect, 2.2) * 0.68 : base * 0.68
-  const Ry     = aspect >= 1 ? base * 0.44                          : base * Math.min(1 / aspect, 2.2) * 0.55
-  const golden = Math.PI * (3 - Math.sqrt(5))
-  const rot    = Math.random() * Math.PI * 2
-  return Array.from({ length: count }, (_, i) => {
-    const angle = i * golden + rot
-    const r     = Math.sqrt((i + 0.5) / Math.max(count, 1))
-    return [
-      Math.cos(angle) * Rx * r + (Math.random() - 0.5) * Rx * 0.30,
-      Math.sin(angle) * Ry * r + (Math.random() - 0.5) * Ry * 0.30,
-      (Math.random() - 0.5) * 8,
-    ] as [number, number, number]
-  })
+  const isMobile = typeof window !== 'undefined' && window.innerWidth < 600
+  const aspect   = typeof window !== 'undefined' ? window.innerWidth / window.innerHeight : 1.6
+  // Spread scales with node count so the canvas always has room
+  const spread = Math.sqrt(count) * (isMobile ? 6 : 9) + 8
+  const Rx = spread * Math.min(Math.max(aspect, 0.7), 2.0)
+  const Ry = spread
+  // Conservative min-distance: covers a wide landscape photo (aspect≈1.5) at scale 1
+  const MIN_DIST = isMobile ? 5.5 : 7.5
+
+  const placed: [number, number][] = []
+  const result: [number, number, number][] = []
+
+  for (let i = 0; i < count; i++) {
+    let bx = 0, by = 0, bestDist = -1
+
+    for (let a = 0; a < 80; a++) {
+      const cx = (Math.random() * 2 - 1) * Rx
+      const cy = (Math.random() * 2 - 1) * Ry
+      const minD = placed.length === 0
+        ? Infinity
+        : placed.reduce((m, [px, py]) => Math.min(m, Math.sqrt((cx - px) ** 2 + (cy - py) ** 2)), Infinity)
+      if (minD >= MIN_DIST) { bx = cx; by = cy; break }           // good spot — use it
+      if (minD > bestDist)  { bestDist = minD; bx = cx; by = cy } // best so far
+    }
+
+    placed.push([bx, by])
+    result.push([bx, by, (Math.random() - 0.5) * 6])
+  }
+
+  return result
 }
 
 // Demo nodes shown to first-time visitors (never saved to Supabase)

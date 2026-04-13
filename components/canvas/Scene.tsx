@@ -16,9 +16,8 @@ function seededRandom(seed: number) {
   return x - Math.floor(x)
 }
 
-// Orbit layout when a node is selected — all nodes scatter at the same Z,
-// randomly placed across the visible area, with minimum-distance enforcement
-// to prevent overlapping.
+// Orbit layout when a node is selected — random every click, no overlaps.
+// Uses Math.random() so each tap/click gives a fresh arrangement.
 function computeOrbitPositions(
   nodes: NodeData[],
   selectedId: string | null
@@ -33,39 +32,32 @@ function computeOrbitPositions(
 
   const aspect = typeof window !== 'undefined' ? window.innerWidth / window.innerHeight : 1.6
   const zoomD  = isMobile ? 13 : 7.5
-  // Compute half-extents of the visible area at the selected node's depth
   const depth  = zoomD + 2
   const fovV   = isMobile ? 65 : 60
-  const halfH  = depth * Math.tan((fovV / 2) * Math.PI / 180) * 0.82
+  const halfH  = depth * Math.tan((fovV / 2) * Math.PI / 180) * 0.88
   const halfW  = halfH * aspect
-  // Minimum separation between node centres (scaled-down orbit size ≈ 3 units)
-  const minDist = isMobile ? 4.2 : 5.0
+  // Min separation covers a landscape photo at orbit scale (0.55 mobile / 0.82 desktop)
+  const minDist = isMobile ? 5.0 : 6.5
 
-  // Start with selected node occupying the centre
+  // Selected node occupies the centre
   const placed: [number, number][] = [[0, 0]]
 
   others.forEach((node) => {
-    let bx = 0, by = 0
-    let found = false
+    let bx = 0, by = 0, bestDist = -1
 
-    // Try up to 40 seeded positions; pick the first that doesn't overlap
-    for (let attempt = 0; attempt < 40 && !found; attempt++) {
-      const cx = (seededRandom(node.seed * 7 + attempt * 17 + 1) * 2 - 1) * halfW
-      const cy = (seededRandom(node.seed * 5 + attempt * 13 + 3) * 2 - 1) * halfH
-      const tooClose = placed.some(([px, py]) =>
-        Math.sqrt((cx - px) ** 2 + (cy - py) ** 2) < minDist
+    for (let a = 0; a < 60; a++) {
+      const cx = (Math.random() * 2 - 1) * halfW
+      const cy = (Math.random() * 2 - 1) * halfH
+      const minD = placed.reduce(
+        (m, [px, py]) => Math.min(m, Math.sqrt((cx - px) ** 2 + (cy - py) ** 2)),
+        Infinity
       )
-      if (!tooClose) { bx = cx; by = cy; found = true }
+      if (minD >= minDist) { bx = cx; by = cy; break }           // found a clear spot
+      if (minD > bestDist) { bestDist = minD; bx = cx; by = cy } // best effort fallback
     }
-    if (!found) {
-      // Fallback: use raw seeded position (no overlap guarantee but no hang)
-      bx = (seededRandom(node.seed * 7 + 1) * 2 - 1) * halfW
-      by = (seededRandom(node.seed * 5 + 3) * 2 - 1) * halfH
-    }
-    placed.push([bx, by])
 
-    // Tiny Z jitter (±0.8) — visually natural, never "in front of" or "behind"
-    const zJitter = (seededRandom(node.seed * 3 + 9) - 0.5) * 1.6
+    placed.push([bx, by])
+    const zJitter = (Math.random() - 0.5) * 1.2
     result[node.id] = [
       sel.position[0] + bx,
       sel.position[1] + by,
@@ -116,9 +108,12 @@ export function Scene() {
 
   const filterActive = filterTags.length > 0
 
+  // Re-randomize only when the selected node ID changes — not on every render.
+  // This gives a fresh random scatter each time a node is tapped/clicked.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const orbitPositions = useMemo(
     () => computeOrbitPositions(nodes, selectedNode),
-    [nodes, selectedNode]
+    [selectedNode]
   )
 
   const perimeterPositions = useMemo(
