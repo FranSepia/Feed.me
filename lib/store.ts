@@ -343,7 +343,9 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     const { readOnly, userId } = get()
     if (readOnly || !userId) return
 
-    const nodeId = `social-${platform}`
+    // Use a user-scoped ID to avoid conflicts between different users
+    const nodeId = `${userId}-social-${platform}`
+
     set((state) => {
       const nodes = state.nodes.filter(
         (n) => !(n.type === 'social' && n.title === platform)
@@ -375,13 +377,18 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       return { socials: newSocials, nodes }
     })
 
-    // Persist — use DELETE + INSERT to avoid needing UPDATE RLS policy
+    // Persist — DELETE by user+type+title (avoids conflicts between users),
+    // then INSERT with a user-scoped ID
     const db = supabase
     if (db) {
       try {
-        // Always delete the old row first (no-op if it doesn't exist)
-        const { error: delErr } = await db.from('canvas_nodes').delete().eq('id', nodeId)
+        // Delete any existing social node for this user+platform (old or new ID format)
+        const { error: delErr } = await db.from('canvas_nodes').delete()
+          .eq('user_id', userId)
+          .eq('type', 'social')
+          .eq('title', platform)
         if (delErr) throw new Error(delErr.message)
+
         if (url.trim()) {
           const { error } = await db.from('canvas_nodes').insert({
             id: nodeId,

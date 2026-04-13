@@ -181,20 +181,64 @@ export function BottomBar() {
   // All unique tags already in the canvas
   const existingTags = Array.from(new Set(nodes.flatMap((n) => n.tags))).sort()
 
+  // Compress images > 2 MB before upload (critical for mobile camera photos)
+  const compressImage = (file: File): Promise<File> => {
+    if (!file.type.startsWith('image/') || file.size < 2 * 1024 * 1024) {
+      return Promise.resolve(file)
+    }
+    return new Promise((resolve) => {
+      const img = new Image()
+      const objUrl = URL.createObjectURL(file)
+      img.onload = () => {
+        URL.revokeObjectURL(objUrl)
+        const MAX_W = 1920
+        let { width, height } = img
+        if (width > MAX_W) { height = Math.round(height * MAX_W / width); width = MAX_W }
+        const canvas = document.createElement('canvas')
+        canvas.width = width; canvas.height = height
+        const ctx = canvas.getContext('2d')
+        if (!ctx) { resolve(file); return }
+        ctx.drawImage(img, 0, 0, width, height)
+        canvas.toBlob(
+          (blob) => {
+            if (!blob) { resolve(file); return }
+            resolve(new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' }))
+          },
+          'image/jpeg', 0.85
+        )
+      }
+      img.onerror = () => { URL.revokeObjectURL(objUrl); resolve(file) }
+      img.src = objUrl
+    })
+  }
+
   // Upload a file to Supabase Storage and return its public URL
+  // Includes a 30-second timeout so mobile uploads never freeze forever
   const uploadMedia = async (file: File): Promise<string> => {
     const db = supabase
     if (!db) throw new Error('Supabase not configured')
     if (!user) throw new Error('Not authenticated')
-    const ext = file.name.split('.').pop() ?? 'bin'
+
+    const compressed = await compressImage(file)
+    const ext = compressed.name.split('.').pop() ?? 'jpg'
     const path = `${user.id}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
-    const { error } = await db.storage.from('media').upload(path, file, {
-      cacheControl: '31536000',
-      upsert: false,
+
+    let timer: ReturnType<typeof setTimeout>
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error('Upload timed out — check your connection and try again.')), 30000)
     })
-    if (error) throw error
-    const { data } = db.storage.from('media').getPublicUrl(path)
-    return data.publicUrl
+
+    try {
+      const result = await Promise.race([
+        db.storage.from('media').upload(path, compressed, { cacheControl: '31536000', upsert: false }),
+        timeoutPromise,
+      ])
+      if (result.error) throw result.error
+      const { data } = db.storage.from('media').getPublicUrl(path)
+      return data.publicUrl
+    } finally {
+      clearTimeout(timer!)
+    }
   }
 
   const addImageFiles = (files: File[]) => {

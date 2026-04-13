@@ -27,13 +27,22 @@ export default function PublicProfilePage() {
 
     const loadProfile = async () => {
       if (!supabase) { setNotFound(true); setLoading(false); return }
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('username', username.toLowerCase())
-        .maybeSingle()
 
-      if (error || !data) {
+      // Try up to 2 times to distinguish network errors from "genuinely not found"
+      let data = null
+      let lastError = null
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const { data: d, error: e } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('username', username.toLowerCase())
+          .maybeSingle()
+        if (!e) { data = d; lastError = null; break }
+        lastError = e
+        if (attempt === 0) await new Promise(r => setTimeout(r, 1200)) // wait before retry
+      }
+
+      if (lastError || !data) {
         setNotFound(true)
         setLoading(false)
         return
@@ -107,20 +116,32 @@ export default function PublicProfilePage() {
         <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '16px' }}>
           @{username} does not exist
         </div>
-        <a href="/register" style={{
-          marginTop: '8px',
-          padding: '12px 28px',
-          borderRadius: '12px',
-          background: 'rgba(255,255,255,0.1)',
-          border: '1px solid rgba(255,255,255,0.15)',
-          color: 'white',
-          fontSize: '14px',
-          textDecoration: 'none',
-          fontWeight: 500,
-          transition: 'all 0.15s',
-        }}>
-          Create your Feed.Me
-        </a>
+        <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
+          <a href="/login" style={{
+            padding: '12px 28px',
+            borderRadius: '12px',
+            background: 'rgba(255,255,255,0.08)',
+            border: '1px solid rgba(255,255,255,0.15)',
+            color: 'rgba(255,255,255,0.7)',
+            fontSize: '14px',
+            textDecoration: 'none',
+            fontWeight: 500,
+          }}>
+            Sign In
+          </a>
+          <a href="/register" style={{
+            padding: '12px 28px',
+            borderRadius: '12px',
+            background: 'rgba(255,255,255,0.1)',
+            border: '1px solid rgba(255,255,255,0.15)',
+            color: 'white',
+            fontSize: '14px',
+            textDecoration: 'none',
+            fontWeight: 500,
+          }}>
+            Create your Feed.Me
+          </a>
+        </div>
       </div>
     )
   }
