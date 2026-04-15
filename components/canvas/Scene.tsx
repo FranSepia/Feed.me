@@ -32,20 +32,23 @@ function computeOrbitPositions(
 
   const aspect = typeof window !== 'undefined' ? window.innerWidth / window.innerHeight : 1.6
   const zoomD  = isMobile ? 13 : 7.5
-  const depth  = zoomD + 2
   const fovV   = isMobile ? 65 : 60
-  const halfH  = depth * Math.tan((fovV / 2) * Math.PI / 180) * 0.88
+  // Use the shallowest possible depth (minimum z-behind) to compute the tightest
+  // visible screen bounds — guarantees every orbit node fits on screen.
+  const minZBehind = 4
+  const depth  = zoomD + minZBehind
+  const halfH  = depth * Math.tan((fovV / 2) * Math.PI / 180) * 0.82
   const halfW  = halfH * aspect
   // Min separation covers a landscape photo at orbit scale (0.55 mobile / 0.82 desktop)
   const minDist = isMobile ? 5.0 : 6.5
 
-  // Selected node occupies the centre
+  // Selected node occupies the centre — orbit nodes are pushed away from it
   const placed: [number, number][] = [[0, 0]]
 
   others.forEach((node) => {
     let bx = 0, by = 0, bestDist = -1
 
-    for (let a = 0; a < 60; a++) {
+    for (let a = 0; a < 80; a++) {
       const cx = (Math.random() * 2 - 1) * halfW
       const cy = (Math.random() * 2 - 1) * halfH
       const minD = placed.reduce(
@@ -57,12 +60,13 @@ function computeOrbitPositions(
     }
 
     placed.push([bx, by])
-    // Spread nodes across ±10 depth units — perspective makes far nodes visibly smaller
-    const zJitter = (Math.random() - 0.5) * 20
+    // Always place orbit nodes BEHIND the selected node (negative z = further from camera)
+    // Range: 4–16 units behind so perspective makes them visibly smaller
+    const zBehind = Math.random() * 12 + minZBehind
     result[node.id] = [
       sel.position[0] + bx,
       sel.position[1] + by,
-      sel.position[2] + zJitter,
+      sel.position[2] - zBehind,
     ]
   })
 
@@ -82,9 +86,9 @@ function computePerimeterPositions(
 
   const count  = matching.length
   const aspect = typeof window !== 'undefined' ? window.innerWidth / window.innerHeight : 1.6
-  const base   = Math.sqrt(count) * 3.2 + 6
-  const Rx     = aspect >= 1 ? base * Math.min(aspect, 2.2) * 0.68 : base * 0.68
-  const Ry     = aspect >= 1 ? base * 0.44 : base * Math.min(1 / aspect, 2.2) * 0.55
+  const base   = Math.sqrt(count) * 2.0 + 5
+  const Rx     = aspect >= 1 ? base * Math.min(aspect, 2.2) * 0.60 : base * 0.60
+  const Ry     = aspect >= 1 ? base * 0.38 : base * Math.min(1 / aspect, 2.2) * 0.48
   const golden = Math.PI * (3 - Math.sqrt(5))
 
   matching.forEach((node, i) => {

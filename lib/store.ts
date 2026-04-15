@@ -51,9 +51,9 @@ function layoutPositions(count: number): [number, number, number][] {
   const baseH = isMobile ? 19 : 11
   const baseW = baseH * aspect
   // Scale oval up for many nodes so they all have room
-  const scaleF = Math.max(1, Math.sqrt(count / 12))
-  const Rx = baseW * scaleF * 0.88
-  const Ry = baseH * scaleF * 0.88
+  const scaleF = Math.max(1, Math.sqrt(count / 30))
+  const Rx = baseW * scaleF * 0.72
+  const Ry = baseH * scaleF * 0.72
   const MIN_DIST = isMobile ? 4.5 : 6.0
 
   const placed: [number, number][] = []
@@ -318,9 +318,9 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     const baseH = isMob ? 19 : 11
     const baseW = baseH * aspect
     const count = get().nodes.length
-    const scaleF = Math.max(1, Math.sqrt((count + 1) / 12))
-    const Rx = baseW * scaleF * 0.85
-    const Ry = baseH * scaleF * 0.85
+    const scaleF = Math.max(1, Math.sqrt((count + 1) / 30))
+    const Rx = baseW * scaleF * 0.72
+    const Ry = baseH * scaleF * 0.72
     // Pick a random position inside the oval, avoiding existing nodes
     const existing = get().nodes.map(n => n.position)
     let px = 0, py = 0, bestD = -1
