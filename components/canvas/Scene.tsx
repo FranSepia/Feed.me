@@ -57,7 +57,8 @@ function computeOrbitPositions(
     }
 
     placed.push([bx, by])
-    const zJitter = (Math.random() - 0.5) * 1.2
+    // Spread nodes across ±10 depth units — perspective makes far nodes visibly smaller
+    const zJitter = (Math.random() - 0.5) * 20
     result[node.id] = [
       sel.position[0] + bx,
       sel.position[1] + by,
@@ -131,19 +132,11 @@ export function Scene() {
       {sorted.map((node) => {
         const isSelected = selectedNode === node.id
 
-        // Orbit/dim logic (when something is selected)
-        const isRelated = selectedNode
-          ? nodes.find((n) => n.id === selectedNode)?.tags.some((t) => node.tags.includes(t)) ?? false
-          : true
-        const orbitDimmed = selectedNode !== null && !isSelected && !isRelated
-
-        // Filter logic (when filter is active and nothing is selected)
+        // Filter dimming only — nodes are always solid during orbit
         const matchesFilter = filterActive
           ? node.tags.some((t) => filterTags.includes(t))
           : true
-        const filterDimmed = filterActive && !selectedNode && !matchesFilter
-
-        const isDimmed = orbitDimmed || filterDimmed
+        const isDimmed = filterActive && !selectedNode && !matchesFilter
         const isOrbit = !isSelected && selectedNode !== null
 
         // Priority: orbit positions > perimeter positions > default position

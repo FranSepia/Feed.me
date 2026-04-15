@@ -41,17 +41,20 @@ export function generatePositions(count: number): [number, number, number][] {
   })
 }
 
-// Random layout with rejection sampling — no overlaps, different every page load.
-// Each node tries up to 80 random positions; keeps the best (furthest from all others).
+// Oval layout within visible screen bounds.
+// Landscape screen → wide horizontal oval. Portrait → tall vertical oval.
+// Scales the oval up proportionally when there are many nodes.
 function layoutPositions(count: number): [number, number, number][] {
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 600
   const aspect   = typeof window !== 'undefined' ? window.innerWidth / window.innerHeight : 1.6
-  // Spread scales with node count so the canvas always has room
-  const spread = Math.sqrt(count) * (isMobile ? 6 : 9) + 8
-  const Rx = spread * Math.min(Math.max(aspect, 0.7), 2.0)
-  const Ry = spread
-  // Conservative min-distance: covers a wide landscape photo (aspect≈1.5) at scale 1
-  const MIN_DIST = isMobile ? 5.5 : 7.5
+  // Base visible area at camera z=20 fov=60 (desktop) / z=34 fov=65 (mobile)
+  const baseH = isMobile ? 19 : 11
+  const baseW = baseH * aspect
+  // Scale oval up for many nodes so they all have room
+  const scaleF = Math.max(1, Math.sqrt(count / 12))
+  const Rx = baseW * scaleF * 0.88
+  const Ry = baseH * scaleF * 0.88
+  const MIN_DIST = isMobile ? 4.5 : 6.0
 
   const placed: [number, number][] = []
   const result: [number, number, number][] = []
@@ -59,21 +62,32 @@ function layoutPositions(count: number): [number, number, number][] {
   for (let i = 0; i < count; i++) {
     let bx = 0, by = 0, bestDist = -1
 
-    for (let a = 0; a < 80; a++) {
+    for (let a = 0; a < 120; a++) {
+      // Uniform random point inside the oval via rejection from bounding rectangle
       const cx = (Math.random() * 2 - 1) * Rx
       const cy = (Math.random() * 2 - 1) * Ry
+      if ((cx / Rx) ** 2 + (cy / Ry) ** 2 > 1) continue  // outside oval — skip
       const minD = placed.length === 0
         ? Infinity
         : placed.reduce((m, [px, py]) => Math.min(m, Math.sqrt((cx - px) ** 2 + (cy - py) ** 2)), Infinity)
-      if (minD >= MIN_DIST) { bx = cx; by = cy; break }           // good spot — use it
-      if (minD > bestDist)  { bestDist = minD; bx = cx; by = cy } // best so far
+      if (minD >= MIN_DIST) { bx = cx; by = cy; bestDist = Infinity; break }
+      if (minD > bestDist)  { bestDist = minD; bx = cx; by = cy }
     }
 
     placed.push([bx, by])
-    result.push([bx, by, (Math.random() - 0.5) * 6])
+    result.push([bx, by, (Math.random() - 0.5) * 8])
   }
 
   return result
+}
+
+// Returns true if a stored DB position is usable (non-zero, within oval bounds).
+function isValidStoredPosition(pos: unknown): pos is [number, number, number] {
+  if (!Array.isArray(pos) || pos.length !== 3) return false
+  if (!pos.every((v) => typeof v === 'number' && isFinite(v))) return false
+  const [x, y] = pos as number[]
+  if (x === 0 && y === 0) return false  // never stored / default
+  return Math.abs(x) < 50 && Math.abs(y) < 40  // within reasonable world bounds
 }
 
 // Demo nodes shown to first-time visitors (never saved to Supabase)
@@ -263,12 +277,21 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
             caption: row.caption ?? undefined,
             date: row.date ?? undefined,
             tags: Array.isArray(row.tags) ? row.tags : [],
-            position: [0, 0, 0] as [number, number, number],
+            // Use stored position if valid; will be overridden below for invalid ones
+            position: isValidStoredPosition(row.position)
+              ? row.position
+              : [0, 0, 0] as [number, number, number],
             seed: typeof row.seed === 'number' ? row.seed : 0,
           }))
-        const positions = layoutPositions(loaded.length)
-        const withPos = loaded.map((n, i) => ({ ...n, position: positions[i] }))
-        set({ nodes: [...withPos, ...socialNodes], socials, nodesLoaded: true })
+
+        // Compute new oval positions only for nodes whose stored position is invalid
+        const needLayout = loaded.filter(n => n.position[0] === 0 && n.position[1] === 0)
+        if (needLayout.length > 0) {
+          const newPositions = layoutPositions(needLayout.length)
+          needLayout.forEach((n, i) => { n.position = newPositions[i] })
+        }
+
+        set({ nodes: [...loaded, ...socialNodes], socials, nodesLoaded: true })
       } else {
         const { readOnly } = get()
         if (readOnly) {
@@ -290,15 +313,27 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     if (readOnly || !userId) return
 
     const id = `node-${Date.now()}`
+    const isMob = typeof window !== 'undefined' && window.innerWidth < 600
+    const aspect = typeof window !== 'undefined' ? window.innerWidth / window.innerHeight : 1.6
+    const baseH = isMob ? 19 : 11
+    const baseW = baseH * aspect
     const count = get().nodes.length
-    const golden = Math.PI * (3 - Math.sqrt(5))
-    const angle = count * golden + Math.random() * 0.8
-    const radius = Math.sqrt(count + 2) * 5 + Math.random() * 4
-    const pos: [number, number, number] = [
-      Math.cos(angle) * radius,
-      Math.sin(angle) * radius * 0.75,
-      (Math.random() - 0.5) * 12,
-    ]
+    const scaleF = Math.max(1, Math.sqrt((count + 1) / 12))
+    const Rx = baseW * scaleF * 0.85
+    const Ry = baseH * scaleF * 0.85
+    // Pick a random position inside the oval, avoiding existing nodes
+    const existing = get().nodes.map(n => n.position)
+    let px = 0, py = 0, bestD = -1
+    for (let a = 0; a < 120; a++) {
+      const cx = (Math.random() * 2 - 1) * Rx
+      const cy = (Math.random() * 2 - 1) * Ry
+      if ((cx / Rx) ** 2 + (cy / Ry) ** 2 > 1) continue
+      const minD = existing.length === 0 ? Infinity
+        : existing.reduce((m, [ex, ey]) => Math.min(m, Math.sqrt((cx-ex)**2+(cy-ey)**2)), Infinity)
+      if (minD >= 6) { px = cx; py = cy; break }
+      if (minD > bestD) { bestD = minD; px = cx; py = cy }
+    }
+    const pos: [number, number, number] = [px, py, (Math.random() - 0.5) * 8]
     const newNode: NodeData = { ...node, id, position: pos }
 
     // Optimistic update
