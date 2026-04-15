@@ -30,17 +30,17 @@ function computeOrbitPositions(
   const result: Record<string, [number, number, number]> = {}
   result[selectedId] = sel.position
 
-  const aspect = typeof window !== 'undefined' ? window.innerWidth / window.innerHeight : 1.6
-  const zoomD  = isMobile ? 13 : 7.5
-  const fovV   = isMobile ? 65 : 60
+  const aspect = typeof window !== 'undefined' ? window.innerWidth / window.innerHeight : 1
+  const zoomD = isMobile ? 13 : 7.5
+  const fovV = isMobile ? 65 : 60
   // Use the shallowest possible depth (minimum z-behind) to compute the tightest
   // visible screen bounds — guarantees every orbit node fits on screen.
   const minZBehind = 4
-  const depth  = zoomD + minZBehind
-  const halfH  = depth * Math.tan((fovV / 2) * Math.PI / 180) * 0.82
-  const halfW  = halfH * aspect
+  const depth = zoomD + minZBehind
+  const halfH = depth * Math.tan((fovV / 2) * Math.PI / 180) * 0.95
+  const halfW = halfH * aspect
   // Min separation covers a landscape photo at orbit scale (0.55 mobile / 0.82 desktop)
-  const minDist = isMobile ? 5.0 : 6.5
+  const minDist = isMobile ? 6.0 : 7.8
 
   // Selected node occupies the centre — orbit nodes are pushed away from it
   const placed: [number, number][] = [[0, 0]]
@@ -62,7 +62,7 @@ function computeOrbitPositions(
     placed.push([bx, by])
     // Always place orbit nodes BEHIND the selected node (negative z = further from camera)
     // Range: 4–16 units behind so perspective makes them visibly smaller
-    const zBehind = Math.random() * 12 + minZBehind
+    const zBehind = Math.random() * 20 + minZBehind
     result[node.id] = [
       sel.position[0] + bx,
       sel.position[1] + by,
@@ -84,18 +84,18 @@ function computePerimeterPositions(
   const result: Record<string, [number, number, number]> = {}
   if (matching.length === 0) return result
 
-  const count  = matching.length
+  const count = matching.length
   const aspect = typeof window !== 'undefined' ? window.innerWidth / window.innerHeight : 1.6
-  const base   = Math.sqrt(count) * 2.0 + 5
-  const Rx     = aspect >= 1 ? base * Math.min(aspect, 2.2) * 0.60 : base * 0.60
-  const Ry     = aspect >= 1 ? base * 0.38 : base * Math.min(1 / aspect, 2.2) * 0.48
+  const base = Math.sqrt(count) * 2.0 + 5
+  const Rx = aspect >= 1 ? base * Math.min(aspect, 2.2) * 0.60 : base * 0.60
+  const Ry = aspect >= 1 ? base * 0.38 : base * Math.min(1 / aspect, 2.2) * 0.48
   const golden = Math.PI * (3 - Math.sqrt(5))
 
   matching.forEach((node, i) => {
     const angle = i * golden
-    const r     = Math.sqrt((i + 0.5) / count)
-    const jx    = (seededRandom(node.seed * 3 + 7) - 0.5) * Rx * 0.30
-    const jy    = (seededRandom(node.seed * 5 + 2) - 0.5) * Ry * 0.30
+    const r = Math.sqrt((i + 0.5) / count)
+    const jx = (seededRandom(node.seed * 3 + 7) - 0.5) * Rx * 0.30
+    const jy = (seededRandom(node.seed * 5 + 2) - 0.5) * Ry * 0.30
     result[node.id] = [
       Math.cos(angle) * Rx * r + jx,
       Math.sin(angle) * Ry * r + jy,
@@ -151,11 +151,11 @@ export function Scene() {
 
         const props = { key: node.id, node, isSelected, isDimmed, isOrbit, targetPosition }
 
-        if (node.type === 'image')   return <ImageNode   {...props} />
-        if (node.type === 'text')    return <TextNode    {...props} />
+        if (node.type === 'image') return <ImageNode   {...props} />
+        if (node.type === 'text') return <TextNode    {...props} />
         if (node.type === 'spotify') return <SpotifyNode {...props} />
-        if (node.type === 'video')   return <VideoNode   {...props} />
-        if (node.type === 'social')  return <SocialNode  {...props} />
+        if (node.type === 'video') return <VideoNode   {...props} />
+        if (node.type === 'social') return <SocialNode  {...props} />
         return null
       })}
     </>
