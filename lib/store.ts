@@ -14,16 +14,16 @@ export interface NodeData {
 }
 
 export const SOCIAL_PLATFORMS = [
-  { key: 'instagram',  label: 'Instagram',  color: '#E1306C', icon: 'IG' },
-  { key: 'twitter',    label: 'X / Twitter', color: '#000000', icon: 'X'  },
-  { key: 'tiktok',     label: 'TikTok',      color: '#010101', icon: 'TK' },
-  { key: 'snapchat',   label: 'Snapchat',    color: '#FFFC00', icon: 'SC' },
-  { key: 'onlyfans',   label: 'OnlyFans',    color: '#00AFF0', icon: 'OF' },
-  { key: 'whatsapp',   label: 'WhatsApp',    color: '#25D366', icon: 'WA' },
-  { key: 'youtube',    label: 'YouTube',     color: '#FF0000', icon: 'YT' },
-  { key: 'twitch',     label: 'Twitch',      color: '#9146FF', icon: 'TW' },
-  { key: 'linkedin',   label: 'LinkedIn',    color: '#0077B5', icon: 'LI' },
-  { key: 'spotify',    label: 'Spotify',     color: '#1DB954', icon: 'SP' },
+  { key: 'instagram', label: 'Instagram', color: '#E1306C', icon: 'IG' },
+  { key: 'twitter', label: 'X / Twitter', color: '#000000', icon: 'X' },
+  { key: 'tiktok', label: 'TikTok', color: '#010101', icon: 'TK' },
+  { key: 'snapchat', label: 'Snapchat', color: '#FFFC00', icon: 'SC' },
+  { key: 'onlyfans', label: 'OnlyFans', color: '#00AFF0', icon: 'OF' },
+  { key: 'whatsapp', label: 'WhatsApp', color: '#25D366', icon: 'WA' },
+  { key: 'youtube', label: 'YouTube', color: '#FF0000', icon: 'YT' },
+  { key: 'twitch', label: 'Twitch', color: '#9146FF', icon: 'TW' },
+  { key: 'linkedin', label: 'LinkedIn', color: '#0077B5', icon: 'LI' },
+  { key: 'spotify', label: 'Spotify', color: '#1DB954', icon: 'SP' },
 ]
 
 // Golden-angle spiral layout
@@ -31,7 +31,7 @@ export function generatePositions(count: number): [number, number, number][] {
   const golden = Math.PI * (3 - Math.sqrt(5))
   const offset = Math.random() * Math.PI * 2
   return Array.from({ length: count }, (_, i) => {
-    const angle  = i * golden + offset
+    const angle = i * golden + offset
     const radius = Math.sqrt(i + 1) * 4.8
     return [
       Math.cos(angle) * radius,
@@ -46,15 +46,15 @@ export function generatePositions(count: number): [number, number, number][] {
 // Scales the oval up proportionally when there are many nodes.
 function layoutPositions(count: number): [number, number, number][] {
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 600
-  const aspect   = typeof window !== 'undefined' ? window.innerWidth / window.innerHeight : 1.6
+  const aspect = typeof window !== 'undefined' ? window.innerWidth / window.innerHeight : 1.6
   // Base visible area at camera z=20 fov=60 (desktop) / z=34 fov=65 (mobile)
   const baseH = isMobile ? 19 : 11
   const baseW = baseH * aspect
   // Scale oval up for many nodes so they all have room
   const scaleF = Math.max(1, Math.sqrt(count / 30))
-  const Rx = baseW * scaleF * 0.72
-  const Ry = baseH * scaleF * 0.72
-  const MIN_DIST = isMobile ? 4.5 : 6.0
+  const Rx = baseW * scaleF * 0.3
+  const Ry = baseH * scaleF * 0.3
+  const MIN_DIST = isMobile ? 10.5 : 12.0
 
   const placed: [number, number][] = []
   const result: [number, number, number][] = []
@@ -71,11 +71,11 @@ function layoutPositions(count: number): [number, number, number][] {
         ? Infinity
         : placed.reduce((m, [px, py]) => Math.min(m, Math.sqrt((cx - px) ** 2 + (cy - py) ** 2)), Infinity)
       if (minD >= MIN_DIST) { bx = cx; by = cy; bestDist = Infinity; break }
-      if (minD > bestDist)  { bestDist = minD; bx = cx; by = cy }
+      if (minD > bestDist) { bestDist = minD; bx = cx; by = cy }
     }
 
     placed.push([bx, by])
-    result.push([bx, by, (Math.random() - 0.5) * 8])
+    result.push([bx, by, (Math.random() - 0.5) * 10])
   }
 
   return result
@@ -236,7 +236,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       } else {
         // Legacy: socials were individual 'social' type nodes
         allRows.filter(r => r.type === 'social' && r.title && r.content)
-               .forEach(r => { socials[r.title] = r.content })
+          .forEach(r => { socials[r.title] = r.content })
       }
 
       // Build social canvas nodes for display (fixed positions, not included in layout)
@@ -329,7 +329,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       const cy = (Math.random() * 2 - 1) * Ry
       if ((cx / Rx) ** 2 + (cy / Ry) ** 2 > 1) continue
       const minD = existing.length === 0 ? Infinity
-        : existing.reduce((m, [ex, ey]) => Math.min(m, Math.sqrt((cx-ex)**2+(cy-ey)**2)), Infinity)
+        : existing.reduce((m, [ex, ey]) => Math.min(m, Math.sqrt((cx - ex) ** 2 + (cy - ey) ** 2)), Infinity)
       if (minD >= 6) { px = cx; py = cy; break }
       if (minD > bestD) { bestD = minD; px = cx; py = cy }
     }
@@ -382,7 +382,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
         if (updates.title !== undefined) payload.title = updates.title
         if (updates.caption !== undefined) payload.caption = updates.caption
         if (updates.tags !== undefined) payload.tags = updates.tags
-                
+
         if (Object.keys(payload).length > 0) {
           const { error } = await db.from('canvas_nodes').update(payload).eq('id', id)
           if (error) console.error('[Feed.Me] UPDATE error:', error.message)
