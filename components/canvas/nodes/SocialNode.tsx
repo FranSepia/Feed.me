@@ -28,10 +28,22 @@ export function SocialNode({ node, isSelected, isDimmed, isOrbit, targetPosition
   const icon   = platform?.icon  ?? '?'
   const label  = platform?.label ?? node.title ?? ''
 
+  // Random entrance — computed once on mount
+  const entranceFrom = useRef({
+    position: [
+      targetPosition[0] + (Math.random() - 0.5) * 60,
+      targetPosition[1] + (Math.random() - 0.5) * 40,
+      targetPosition[2] - 10 - Math.random() * 20,
+    ] as [number, number, number],
+    delay: Math.floor(Math.random() * 500),
+  })
+
   const springs = useSpring({
+    from: { position: entranceFrom.current.position, scale: 0 },
     position: targetPosition,
     scale: isSelected ? 1.1 : isOrbit ? (hovered ? 0.90 : 0.82) : hovered ? 1.04 : 1,
-    config: { mass: 1.2, tension: 140, friction: 26 },
+    config: { mass: 1.4, tension: 120, friction: 28 },
+    delay: entranceFrom.current.delay,
   })
 
   useFrame(() => {

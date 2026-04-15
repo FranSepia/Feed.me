@@ -48,11 +48,23 @@ export function ImageNode({ node, isSelected, isDimmed, isOrbit, targetPosition 
   const mobileOrbitScale = typeof window !== 'undefined' && window.innerWidth < 600 ? 0.55 : 0.82
   const targetScale = isSelected ? 1.75 : isOrbit ? (hovered ? mobileOrbitScale + 0.08 : mobileOrbitScale) : hovered ? 1.04 : 1
 
+  // Random entrance — computed once on mount, stable across re-renders
+  const entranceFrom = useRef({
+    position: [
+      targetPosition[0] + (Math.random() - 0.5) * 60,
+      targetPosition[1] + (Math.random() - 0.5) * 40,
+      targetPosition[2] - 10 - Math.random() * 20,
+    ] as [number, number, number],
+    delay: Math.floor(Math.random() * 500),
+  })
+
   const springs = useSpring({
+    from: { position: entranceFrom.current.position, scale: 0, opacity: 0 },
     position: targetPosition,
     scale: targetScale,
     opacity: targetOpacity,
-    config: { mass: 1.2, tension: 140, friction: 26 },
+    config: { mass: 1.4, tension: 120, friction: 28 },
+    delay: entranceFrom.current.delay,
   })
 
   useFrame(() => {
