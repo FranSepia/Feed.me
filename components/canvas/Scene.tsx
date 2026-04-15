@@ -40,7 +40,7 @@ function computeOrbitPositions(
   const halfH = depth * Math.tan((fovV / 2) * Math.PI / 180) * 0.95
   const halfW = halfH * aspect
   // Min separation covers a landscape photo at orbit scale (0.55 mobile / 0.82 desktop)
-  const minDist = isMobile ? 6.0 : 7.8
+  const minDist = isMobile ? 3.5 : 4.5
 
   // Selected node occupies the centre — orbit nodes are pushed away from it
   const placed: [number, number][] = [[0, 0]]
