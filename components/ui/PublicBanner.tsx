@@ -57,7 +57,7 @@ export function PublicBanner() {
         minWidth: 0,
       }}>
         <span style={{ color: boldColor, fontWeight: 600, fontStyle: 'normal' }}>
-          Likes, no followers.
+          No likes, no followers.
         </span>{' '}
         Just You Being You.{' '}
         <span style={{ fontWeight: 600, fontStyle: 'normal' }}>Feed.Me</span>
