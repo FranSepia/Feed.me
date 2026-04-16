@@ -464,7 +464,8 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
 
     // DELETE existing socials row, then INSERT fresh — avoids needing UPDATE permission
     const fixedId = `${userId}-socials-config`
-    await supabase.from('canvas_nodes').delete().eq('id', fixedId)
+    const { error: delError } = await supabase.from('canvas_nodes').delete().eq('id', fixedId)
+    if (delError) console.error('[Feed.Me] socials DELETE error:', delError)
 
     const { error } = await supabase.from('canvas_nodes').insert({
       id: fixedId,
@@ -479,6 +480,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       seed: 0,
     })
 
+    console.error('[Feed.Me] socials INSERT result:', error ?? 'OK')
     if (error) throw new Error(error.message)
   },
 
