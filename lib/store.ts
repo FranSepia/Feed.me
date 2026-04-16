@@ -52,9 +52,9 @@ function layoutPositions(count: number): [number, number, number][] {
   const baseW = baseH * aspect
   // Scale oval up for many nodes so they all have room
   const scaleF = Math.max(1, Math.sqrt(count / 30))
-  const Rx = baseW * scaleF * 0.3
-  const Ry = baseH * scaleF * 0.3
-  const MIN_DIST = isMobile ? 10.5 : 12.0
+  const Rx = baseW * scaleF * 0.075
+  const Ry = baseH * scaleF * 0.1
+  const MIN_DIST = isMobile ? 6.0 : 7.0
 
   const placed: [number, number][] = []
   const result: [number, number, number][] = []
@@ -422,10 +422,11 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     }
   },
 
-  // Save ALL socials at once — raw fetch to bypass any Supabase JS client lock issues
+  // Save ALL socials at once — upsert to a fixed row ID so there's only ever one row
   setSocials: async (allSocials: Record<string, string>) => {
     const { readOnly, userId } = get()
     if (readOnly || !userId) return
+    if (!supabase) throw new Error('Supabase not configured')
 
     // Keep only non-empty values
     const clean: Record<string, string> = {}
@@ -461,46 +462,23 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       socials: clean,
     }))
 
-    // Persist via raw fetch — avoids any internal Supabase JS client lock/hang
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-    if (!supabaseUrl || !anonKey) throw new Error('Supabase env vars not set')
+    // Upsert to a fixed ID — one row per user, no accumulation
+    const { error } = await supabase
+      .from('canvas_nodes')
+      .upsert({
+        id: `${userId}-socials-config`,
+        user_id: userId,
+        type: 'socials_config',
+        content: JSON.stringify(clean),
+        title: 'socials',
+        caption: null,
+        date: null,
+        tags: [],
+        position: [0, 0, 0],
+        seed: 0,
+      }, { onConflict: 'id' })
 
-    // Get auth token (fall back to anon key if no session)
-    let token = anonKey
-    try {
-      const { data } = await supabase!.auth.getSession()
-      if (data.session?.access_token) token = data.session.access_token
-    } catch { /* use anon key */ }
-
-    const payload = {
-      id: `${userId}-socials-${Date.now()}`,
-      user_id: userId,
-      type: 'socials_config',
-      content: JSON.stringify(clean),
-      title: 'socials',
-      caption: null,
-      date: null,
-      tags: [] as string[],
-      position: [0, 0, 0] as number[],
-      seed: 0,
-    }
-
-    const res = await fetch(`${supabaseUrl}/rest/v1/canvas_nodes`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': anonKey,
-        'Authorization': `Bearer ${token}`,
-        'Prefer': 'return=minimal',
-      },
-      body: JSON.stringify(payload),
-    })
-
-    if (!res.ok) {
-      const text = await res.text()
-      throw new Error(`Save failed: ${res.status} ${text}`)
-    }
+    if (error) throw new Error(error.message)
   },
 
   // Keep setSocial for individual changes (delegates to setSocials internally)
