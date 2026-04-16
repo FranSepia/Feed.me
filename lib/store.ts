@@ -425,7 +425,8 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   // Save ALL socials at once — upsert to a fixed row ID so there's only ever one row
   setSocials: async (allSocials: Record<string, string>) => {
     const { readOnly, userId } = get()
-    if (readOnly || !userId) return
+    console.log('[Feed.Me] setSocials called — readOnly:', readOnly, 'userId:', userId, 'supabase:', !!supabase)
+    if (readOnly || !userId) { console.warn('[Feed.Me] setSocials early return — readOnly or no userId'); return }
     if (!supabase) throw new Error('Supabase not configured')
 
     // Keep only non-empty values
