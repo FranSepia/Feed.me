@@ -35,6 +35,14 @@ const AuthContext = createContext<AuthContextType>({
 
 export const useAuth = () => useContext(AuthContext)
 
+// Remove all Supabase auth tokens from localStorage (handles ghost sessions)
+function clearSupabaseStorage() {
+  if (typeof window === 'undefined') return
+  Object.keys(localStorage)
+    .filter((k) => k.startsWith('sb-') && k.endsWith('-auth-token'))
+    .forEach((k) => localStorage.removeItem(k))
+}
+
 // Reserved usernames that cannot be used
 const RESERVED = new Set(['login', 'register', 'editor', 'admin', 'api', 'settings', 'profile', 'explore'])
 
@@ -99,9 +107,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setProfile(null)
           }
           setLoading(false)
+        } else if (event === 'SIGNED_OUT') {
+          // Session ended (explicit sign-out or expired token) — destroy local state
+          // and force a hard redirect so no ghost session lingers in React state.
+          setUser(null)
+          setProfile(null)
+          clearSupabaseStorage()
+          if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login') && !window.location.pathname.startsWith('/register')) {
+            window.location.replace('/login')
+          }
         } else {
-          // For subsequent events (SIGNED_IN, SIGNED_OUT, TOKEN_REFRESHED)
-          // we can await normally since there's no loading gate
+          // SIGNED_IN, TOKEN_REFRESHED, etc.
           if (u) {
             await loadProfile(u.id)
           } else {
@@ -155,7 +171,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     if (!supabase) return
-    await supabase.auth.signOut()
+    try {
+      await supabase.auth.signOut()
+    } catch {
+      // Token already invalid — clean up manually so the ghost session is destroyed
+      clearSupabaseStorage()
+    }
     setUser(null)
     setProfile(null)
   }
