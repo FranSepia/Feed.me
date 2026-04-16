@@ -95,29 +95,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         const u = session?.user ?? null
-        setUser(u)
 
         if (event === 'INITIAL_SESSION') {
-          // Resolve loading immediately — don't block on profile fetch.
-          // If loadProfile hangs (slow DB), the spinner would freeze forever.
           clearTimeout(fallbackTimer)
           if (u) {
-            loadProfile(u.id) // fire-and-forget for initial load
+            // Validate the session server-side to catch ghost sessions.
+            // getUser() makes a real API call — if the token is expired/revoked
+            // it returns an error even though localStorage looks fine.
+            const { error: userError } = await supabase!.auth.getUser()
+            if (userError) {
+              // Ghost session — wipe it and send to login
+              clearSupabaseStorage()
+              await supabase!.auth.signOut({ scope: 'local' })
+              setUser(null)
+              setProfile(null)
+              setLoading(false)
+              if (typeof window !== 'undefined') window.location.replace('/login')
+              return
+            }
+            setUser(u)
+            loadProfile(u.id) // fire-and-forget
           } else {
+            setUser(null)
             setProfile(null)
           }
           setLoading(false)
         } else if (event === 'SIGNED_OUT') {
-          // Session ended (explicit sign-out or expired token) — destroy local state
-          // and force a hard redirect so no ghost session lingers in React state.
+          // Only clean up React state — don't touch localStorage or redirect here.
+          // Supabase already cleared the tokens. The page that called signOut()
+          // is responsible for navigation (ProfilePanel already does router.push).
           setUser(null)
           setProfile(null)
-          clearSupabaseStorage()
-          if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login') && !window.location.pathname.startsWith('/register')) {
-            window.location.replace('/login')
-          }
         } else {
-          // SIGNED_IN, TOKEN_REFRESHED, etc.
+          // SIGNED_IN, TOKEN_REFRESHED, USER_UPDATED, etc.
+          setUser(u)
           if (u) {
             await loadProfile(u.id)
           } else {

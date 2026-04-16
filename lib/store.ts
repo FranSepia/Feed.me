@@ -462,21 +462,22 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       socials: clean,
     }))
 
-    // Upsert to a fixed ID — one row per user, no accumulation
-    const { error } = await supabase
-      .from('canvas_nodes')
-      .upsert({
-        id: `${userId}-socials-config`,
-        user_id: userId,
-        type: 'socials_config',
-        content: JSON.stringify(clean),
-        title: 'socials',
-        caption: null,
-        date: null,
-        tags: [],
-        position: [0, 0, 0],
-        seed: 0,
-      }, { onConflict: 'id' })
+    // DELETE existing socials row, then INSERT fresh — avoids needing UPDATE permission
+    const fixedId = `${userId}-socials-config`
+    await supabase.from('canvas_nodes').delete().eq('id', fixedId)
+
+    const { error } = await supabase.from('canvas_nodes').insert({
+      id: fixedId,
+      user_id: userId,
+      type: 'socials_config',
+      content: JSON.stringify(clean),
+      title: 'socials',
+      caption: null,
+      date: null,
+      tags: [],
+      position: [0, 0, 0],
+      seed: 0,
+    })
 
     if (error) throw new Error(error.message)
   },
