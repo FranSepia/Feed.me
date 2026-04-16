@@ -463,26 +463,50 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       socials: clean,
     }))
 
-    // DELETE existing socials row, then INSERT fresh — avoids needing UPDATE permission
-    const fixedId = `${userId}-socials-config`
-    const { error: delError } = await supabase.from('canvas_nodes').delete().eq('id', fixedId)
-    console.log('[Feed.Me] socials DELETE result:', delError ?? 'OK')
+    // Persist via raw fetch — the Supabase JS client hangs on all writes in this project.
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    if (!supabaseUrl || !anonKey) throw new Error('Supabase env vars not set')
 
-    const { error } = await supabase.from('canvas_nodes').insert({
-      id: fixedId,
-      user_id: userId,
-      type: 'socials_config',
-      content: JSON.stringify(clean),
-      title: 'socials',
-      caption: null,
-      date: null,
-      tags: [],
-      position: [0, 0, 0],
-      seed: 0,
+    let token = anonKey
+    try {
+      const { data } = await supabase!.auth.getSession()
+      if (data.session?.access_token) token = data.session.access_token
+    } catch { /* use anon key */ }
+
+    const headers = {
+      'Content-Type': 'application/json',
+      'apikey': anonKey,
+      'Authorization': `Bearer ${token}`,
+      'Prefer': 'return=minimal',
+    }
+    const fixedId = `${userId}-socials-config`
+    const base = `${supabaseUrl}/rest/v1/canvas_nodes`
+
+    // DELETE existing row, then INSERT fresh
+    await fetch(`${base}?id=eq.${encodeURIComponent(fixedId)}`, { method: 'DELETE', headers })
+
+    const res = await fetch(base, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        id: fixedId,
+        user_id: userId,
+        type: 'socials_config',
+        content: JSON.stringify(clean),
+        title: 'socials',
+        caption: null,
+        date: null,
+        tags: [],
+        position: [0, 0, 0],
+        seed: 0,
+      }),
     })
 
-    console.log('[Feed.Me] socials INSERT result:', error ?? 'OK')
-    if (error) throw new Error(error.message)
+    if (!res.ok) {
+      const text = await res.text()
+      throw new Error(`Save failed: ${res.status} ${text}`)
+    }
   },
 
   // Keep setSocial for individual changes (delegates to setSocials internally)
