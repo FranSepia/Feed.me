@@ -30,19 +30,20 @@ function computeOrbitPositions(
   const result: Record<string, [number, number, number]> = {}
   result[selectedId] = sel.position
 
-  const aspect = typeof window !== 'undefined' ? window.innerWidth / window.innerHeight : 1
-  const zoomD = isMobile ? 13 : 7.5
-  const fovV = isMobile ? 65 : 60
-  // Use the shallowest possible depth (minimum z-behind) to compute the tightest
-  // visible screen bounds — guarantees every orbit node fits on screen.
-  const minZBehind = 4
-  const depth = zoomD + minZBehind
-  const halfH = depth * Math.tan((fovV / 2) * Math.PI / 180) * 0.95
-  const halfW = halfH * aspect
-  // Min separation covers a landscape photo at orbit scale (0.55 mobile / 0.82 desktop)
-  const minDist = isMobile ? 1.5 : 2
+  const aspect = typeof window !== 'undefined' ? window.innerWidth / window.innerHeight : 1.6
+  const zoomD  = isMobile ? 13 : 7.5
+  const fovV   = isMobile ? 65 : 60
+  const depth  = zoomD + 2
+  const halfH  = depth * Math.tan((fovV / 2) * Math.PI / 180) * 0.88
+  const halfW  = halfH * aspect
 
-  // Selected node occupies the centre — orbit nodes are pushed away from it
+  // Two-tier exclusion:
+  // • selExclude: keeps orbit nodes away from the selected image (scale 1.75×, much larger)
+  // • minDist:    keeps orbit nodes away from each other (scale 0.55× mobile / 0.82× desktop)
+  const selExclude = isMobile ? 7.0 : 9.0
+  const minDist    = isMobile ? 4.5 : 5.5
+
+  // placed[0] = selected node at relative origin
   const placed: [number, number][] = [[0, 0]]
 
   others.forEach((node) => {
@@ -51,22 +52,29 @@ function computeOrbitPositions(
     for (let a = 0; a < 80; a++) {
       const cx = (Math.random() * 2 - 1) * halfW
       const cy = (Math.random() * 2 - 1) * halfH
-      const minD = placed.reduce(
-        (m, [px, py]) => Math.min(m, Math.sqrt((cx - px) ** 2 + (cy - py) ** 2)),
-        Infinity
-      )
-      if (minD >= minDist) { bx = cx; by = cy; break }           // found a clear spot
-      if (minD > bestDist) { bestDist = minD; bx = cx; by = cy } // best effort fallback
+
+      // Check distance against each placed node with its own threshold
+      let ok = true
+      let worstGap = Infinity
+      for (let pi = 0; pi < placed.length; pi++) {
+        const [px, py] = placed[pi]
+        const d = Math.sqrt((cx - px) ** 2 + (cy - py) ** 2)
+        const threshold = pi === 0 ? selExclude : minDist
+        const gap = d - threshold
+        if (gap < 0) { ok = false; worstGap = Math.min(worstGap, gap); break }
+        worstGap = Math.min(worstGap, gap)
+      }
+
+      if (ok) { bx = cx; by = cy; break }                        // clear spot found
+      if (worstGap > bestDist) { bestDist = worstGap; bx = cx; by = cy } // best so far
     }
 
     placed.push([bx, by])
-    // Always place orbit nodes BEHIND the selected node (negative z = further from camera)
-    // Range: 4–16 units behind so perspective makes them visibly smaller
-    const zBehind = Math.random() * 20 + minZBehind
+    const zJitter = (Math.random() - 0.5) * 1.2
     result[node.id] = [
       sel.position[0] + bx,
       sel.position[1] + by,
-      sel.position[2] - zBehind,
+      sel.position[2] + zJitter,
     ]
   })
 
