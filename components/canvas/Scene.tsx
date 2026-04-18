@@ -33,15 +33,15 @@ function computeOrbitPositions(
   const aspect = typeof window !== 'undefined' ? window.innerWidth / window.innerHeight : 1.6
   const zoomD  = isMobile ? 13 : 7.5
   const fovV   = isMobile ? 65 : 60
-  const depth  = zoomD + 2
-  const halfH  = depth * Math.tan((fovV / 2) * Math.PI / 180) * 0.88
+  // Visible area at the zoom depth (camera will sit zoomD units in front of selected node)
+  const halfH  = zoomD * Math.tan((fovV / 2) * Math.PI / 180) * 0.80
   const halfW  = halfH * aspect
 
-  // Two-tier exclusion:
-  // • selExclude: keeps orbit nodes away from the selected image (scale 1.75×, much larger)
-  // • minDist:    keeps orbit nodes away from each other (scale 0.55× mobile / 0.82× desktop)
-  const selExclude = isMobile ? 7.0 : 9.0
-  const minDist    = isMobile ? 4.5 : 5.5
+  // selExclude must be small enough to fit inside the visible screen.
+  // At desktop zoom: visible half-height ≈ 4.3 units — 9.0 was larger than the screen diagonal!
+  // selExclude ≈ half the selected image height (1.75 × 3 = 5.25, half ≈ 2.6) + orbit image half-height
+  const selExclude = isMobile ? 4.0 : 3.4
+  const minDist    = isMobile ? 3.2 : 2.8
 
   // placed[0] = selected node at relative origin
   const placed: [number, number][] = [[0, 0]]
@@ -49,7 +49,7 @@ function computeOrbitPositions(
   others.forEach((node) => {
     let bx = 0, by = 0, bestDist = -1
 
-    for (let a = 0; a < 80; a++) {
+    for (let a = 0; a < 160; a++) {
       const cx = (Math.random() * 2 - 1) * halfW
       const cy = (Math.random() * 2 - 1) * halfH
 
@@ -65,16 +65,17 @@ function computeOrbitPositions(
         worstGap = Math.min(worstGap, gap)
       }
 
-      if (ok) { bx = cx; by = cy; break }                        // clear spot found
-      if (worstGap > bestDist) { bestDist = worstGap; bx = cx; by = cy } // best so far
+      if (ok) { bx = cx; by = cy; break }
+      if (worstGap > bestDist) { bestDist = worstGap; bx = cx; by = cy }
     }
 
     placed.push([bx, by])
-    const zJitter = (Math.random() - 0.5) * 1.2
+    // Orbit nodes go behind the selected node so there is clear depth separation
+    const zBehind = sel.position[2] - 1.5 - Math.random() * 2.5
     result[node.id] = [
       sel.position[0] + bx,
       sel.position[1] + by,
-      sel.position[2] + zJitter,
+      zBehind,
     ]
   })
 

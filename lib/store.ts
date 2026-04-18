@@ -201,17 +201,21 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     }
   },
 
-  resetCanvas: () => set({
-    nodes: DEMO_NODES,
-    selectedNode: null,
-    playingVideoUrl: null,
-    nodesLoaded: false,
-    socials: {},
-    filterTags: [],
-    userId: null,
-    readOnly: false,
-    editMode: false,
-  }),
+  resetCanvas: () => {
+    const freshPositions = generatePositions(DEMO_NODES.length)
+    const freshDemo = DEMO_NODES.map((n, i) => ({ ...n, position: freshPositions[i] }))
+    set({
+      nodes: freshDemo,
+      selectedNode: null,
+      playingVideoUrl: null,
+      nodesLoaded: false,
+      socials: {},
+      filterTags: [],
+      userId: null,
+      readOnly: false,
+      editMode: false,
+    })
+  },
 
   // Load nodes for a given user
   loadFromSupabase: async (userId: string) => {
@@ -277,18 +281,14 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
             caption: row.caption ?? undefined,
             date: row.date ?? undefined,
             tags: Array.isArray(row.tags) ? row.tags : [],
-            // Use stored position if valid; will be overridden below for invalid ones
-            position: isValidStoredPosition(row.position)
-              ? row.position
-              : [0, 0, 0] as [number, number, number],
+            position: [0, 0, 0] as [number, number, number],
             seed: typeof row.seed === 'number' ? row.seed : 0,
           }))
 
-        // Compute new oval positions only for nodes whose stored position is invalid
-        const needLayout = loaded.filter(n => n.position[0] === 0 && n.position[1] === 0)
-        if (needLayout.length > 0) {
-          const newPositions = layoutPositions(needLayout.length)
-          needLayout.forEach((n, i) => { n.position = newPositions[i] })
+        // Always generate fresh random positions so every session looks different
+        if (loaded.length > 0) {
+          const newPositions = layoutPositions(loaded.length)
+          loaded.forEach((n, i) => { n.position = newPositions[i] })
         }
 
         set({ nodes: [...loaded, ...socialNodes], socials, nodesLoaded: true })
@@ -425,8 +425,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   // Save ALL socials at once — upsert to a fixed row ID so there's only ever one row
   setSocials: async (allSocials: Record<string, string>) => {
     const { readOnly, userId } = get()
-    console.log('[Feed.Me] setSocials called — readOnly:', readOnly, 'userId:', userId, 'supabase:', !!supabase)
-    if (readOnly || !userId) { console.warn('[Feed.Me] setSocials early return — readOnly or no userId'); return }
+    if (readOnly || !userId) throw new Error('Not authenticated')
     if (!supabase) throw new Error('Supabase not configured')
 
     // Keep only non-empty values
@@ -463,50 +462,30 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       socials: clean,
     }))
 
-    // Persist via raw fetch — the Supabase JS client hangs on all writes in this project.
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-    if (!supabaseUrl || !anonKey) throw new Error('Supabase env vars not set')
-
-    let token = anonKey
-    try {
-      const { data } = await supabase!.auth.getSession()
-      if (data.session?.access_token) token = data.session.access_token
-    } catch { /* use anon key */ }
-
-    const headers = {
-      'Content-Type': 'application/json',
-      'apikey': anonKey,
-      'Authorization': `Bearer ${token}`,
-      'Prefer': 'return=minimal',
-    }
+    // Persist via upsert — atomic single operation, errors propagate correctly.
+    // The previous raw-fetch DELETE+INSERT with `Prefer: return=minimal` had a silent
+    // failure mode: Supabase returns 204 even when RLS blocks the insert, so the UI
+    // showed "Guardado" while nothing was actually written.
     const fixedId = `${userId}-socials-config`
-    const base = `${supabaseUrl}/rest/v1/canvas_nodes`
+    const { error } = await supabase
+      .from('canvas_nodes')
+      .upsert(
+        {
+          id: fixedId,
+          user_id: userId,
+          type: 'socials_config',
+          content: JSON.stringify(clean),
+          title: 'socials',
+          caption: null,
+          date: null,
+          tags: [],
+          position: [0, 0, 0],
+          seed: 0,
+        },
+        { onConflict: 'id' }
+      )
 
-    // DELETE existing row, then INSERT fresh
-    await fetch(`${base}?id=eq.${encodeURIComponent(fixedId)}`, { method: 'DELETE', headers })
-
-    const res = await fetch(base, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        id: fixedId,
-        user_id: userId,
-        type: 'socials_config',
-        content: JSON.stringify(clean),
-        title: 'socials',
-        caption: null,
-        date: null,
-        tags: [],
-        position: [0, 0, 0],
-        seed: 0,
-      }),
-    })
-
-    if (!res.ok) {
-      const text = await res.text()
-      throw new Error(`Save failed: ${res.status} ${text}`)
-    }
+    if (error) throw new Error(error.message)
   },
 
   // Keep setSocial for individual changes (delegates to setSocials internally)
