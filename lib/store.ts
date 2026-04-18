@@ -318,7 +318,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
 
       if (regularRows.length > 0 || socialNodes.length > 0) {
         const loaded: NodeData[] = regularRows
-          .filter(row => row.id && row.type && row.content)
+          .filter(row => row.id && row.type && row.content && !String(row.content).startsWith('blob:'))
           .map(row => ({
             id: row.id,
             type: row.type,

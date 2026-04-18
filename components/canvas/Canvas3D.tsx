@@ -1,9 +1,16 @@
 'use client'
 
-import { Suspense } from 'react'
+import { Suspense, Component, ReactNode } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { useCanvasStore } from '@/lib/store'
 import { Scene } from './Scene'
+
+class CanvasErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
+  constructor(props: { children: ReactNode }) { super(props); this.state = { hasError: false } }
+  static getDerivedStateFromError() { return { hasError: true } }
+  componentDidCatch(error: Error) { console.error('[Feed.Me] Canvas render error:', error) }
+  render() { if (this.state.hasError) return null; return this.props.children }
+}
 
 export function Canvas3D() {
   const bgColor = useCanvasStore((s) => s.bgColor)
@@ -28,7 +35,9 @@ export function Canvas3D() {
         <ambientLight intensity={0.8} />
         <pointLight position={[10, 10, 10]} intensity={0.5} />
         <Suspense fallback={null}>
-          <Scene />
+          <CanvasErrorBoundary>
+            <Scene />
+          </CanvasErrorBoundary>
         </Suspense>
       </Canvas>
     </div>
