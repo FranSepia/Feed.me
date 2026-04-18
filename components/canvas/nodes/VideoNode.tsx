@@ -71,10 +71,12 @@ export function VideoNode({ node, isSelected, isDimmed, isOrbit, targetPosition 
     delay: Math.floor(Math.random() * 500),
   })
 
+  const orbitScale = 0.66 * (0.80 + Math.abs(Math.sin(node.seed * 127.1 + 311.7)) * 0.40)
+
   const springs = useSpring({
     from: { position: entranceFrom.current.position, scale: 0 },
     position: targetPosition,
-    scale: isSelected ? 1.08 : isOrbit ? (hovered ? 0.90 : 0.82) : autoPlay ? 1.04 : hovered ? 1.03 : 1,
+    scale: isSelected ? 1.08 : isOrbit ? (hovered ? orbitScale + 0.07 : orbitScale) : autoPlay ? 1.04 : hovered ? 1.03 : 1,
     config: { mass: 1.4, tension: 120, friction: 28 },
     delay: entranceFrom.current.delay,
   })

@@ -45,8 +45,12 @@ export function ImageNode({ node, isSelected, isDimmed, isOrbit, targetPosition 
   const h = 3
 
   const targetOpacity = isDimmed ? 0.32 : 1
-  const mobileOrbitScale = typeof window !== 'undefined' && window.innerWidth < 600 ? 0.55 : 0.82
-  const targetScale = isSelected ? 1.75 : isOrbit ? (hovered ? mobileOrbitScale + 0.08 : mobileOrbitScale) : hovered ? 1.04 : 1
+  // Base orbit scale is 20% smaller than before; each node gets ±20% variation
+  // from its seed so the cloud of thumbnails looks organic, not uniform.
+  const orbitBase = typeof window !== 'undefined' && window.innerWidth < 600 ? 0.44 : 0.66
+  const seedVar   = Math.abs(Math.sin(node.seed * 127.1 + 311.7))   // stable 0–1 per node
+  const orbitScale = orbitBase * (0.80 + seedVar * 0.40)             // 80–120 % of base
+  const targetScale = isSelected ? 1.75 : isOrbit ? (hovered ? orbitScale + 0.07 : orbitScale) : hovered ? 1.04 : 1
 
   // Random entrance — computed once on mount, stable across re-renders
   const entranceFrom = useRef({

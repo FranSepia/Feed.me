@@ -43,7 +43,7 @@ function computeOrbitPositions(
   // → ensures no image touches the selected one in screen space
   const selExclude = isMobile ? 3.8 : 4.2
   // minDist prevents orbit images from overlapping each other
-  const minDist    = isMobile ? 3.28 : 3.74
+  const minDist    = isMobile ? 3.94 : 4.49
 
   // placed[0] = selected node at relative origin (screen centre after camera zoom)
   const placed: [number, number][] = [[0, 0]]
