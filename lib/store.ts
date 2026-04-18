@@ -169,6 +169,51 @@ interface CanvasStore {
   resetCanvas: () => void
 }
 
+// Raw fetch helper for DB writes — bypasses the Supabase JS client which hangs
+// indefinitely on all write operations in this project. Fire-and-forget: logs
+// errors but never blocks the caller.
+function rawDbFire(
+  method: 'POST' | 'PATCH' | 'DELETE',
+  queryParams: string,
+  body: Record<string, unknown> | null
+): void {
+  if (typeof window === 'undefined') return
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const anonKey    = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  if (!supabaseUrl || !anonKey) return
+
+  let token = anonKey
+  try {
+    const ref = new URL(supabaseUrl).hostname.split('.')[0]
+    const raw = localStorage.getItem(`sb-${ref}-auth-token`)
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      const at = parsed?.access_token ?? parsed?.currentSession?.access_token
+      if (at) token = at
+    }
+  } catch { /* fall back to anon key */ }
+
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 8000)
+
+  fetch(`${supabaseUrl}/rest/v1/canvas_nodes${queryParams}`, {
+    method,
+    signal: controller.signal,
+    headers: {
+      'Content-Type': 'application/json',
+      'apikey': anonKey,
+      'Authorization': `Bearer ${token}`,
+      'Prefer': 'return=minimal',
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  })
+    .then(res => {
+      if (!res.ok) res.text().then(t => console.error(`[Feed.Me] DB ${method} ${res.status}:`, t)).catch(() => {})
+    })
+    .catch(err => { if (err.name !== 'AbortError') console.error(`[Feed.Me] DB ${method} failed:`, err) })
+    .finally(() => clearTimeout(timer))
+}
+
 export const useCanvasStore = create<CanvasStore>((set, get) => ({
   nodes: DEMO_NODES,
   selectedNode: null,
@@ -340,30 +385,19 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     // Optimistic update
     set((state) => ({ nodes: [...state.nodes, newNode] }))
 
-    // Persist
-    const db = supabase
-    if (db) {
-      try {
-        const payload = {
-          id,
-          user_id: userId,
-          type: node.type,
-          content: node.content,
-          title: node.title ?? null,
-          caption: node.caption ?? null,
-          date: node.date ?? null,
-          tags: node.tags,
-          position: pos,
-          seed: node.seed,
-        }
-        const { error } = await db.from('canvas_nodes').insert(payload)
-        if (error) {
-          console.error('[Feed.Me] INSERT error:', error.message, error.details, error.hint)
-        }
-      } catch (e) {
-        console.error('[Feed.Me] Failed to save node:', e)
-      }
-    }
+    // Persist — fire-and-forget via raw fetch (JS client hangs on writes)
+    rawDbFire('POST', '', {
+      id,
+      user_id: userId,
+      type: node.type,
+      content: node.content,
+      title: node.title ?? null,
+      caption: node.caption ?? null,
+      date: node.date ?? null,
+      tags: node.tags,
+      position: pos,
+      seed: node.seed,
+    })
   },
 
   updateNode: async (id, updates) => {
@@ -375,22 +409,13 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       nodes: state.nodes.map((n) => (n.id === id ? { ...n, ...updates } : n)),
     }))
 
-    // Persist
-    const db = supabase
-    if (db) {
-      try {
-        const payload: Record<string, any> = {}
-        if (updates.title !== undefined) payload.title = updates.title
-        if (updates.caption !== undefined) payload.caption = updates.caption
-        if (updates.tags !== undefined) payload.tags = updates.tags
-
-        if (Object.keys(payload).length > 0) {
-          const { error } = await db.from('canvas_nodes').update(payload).eq('id', id)
-          if (error) console.error('[Feed.Me] UPDATE error:', error.message)
-        }
-      } catch (e) {
-        console.error('[Feed.Me] Failed to update node:', e)
-      }
+    // Persist — fire-and-forget via raw fetch (JS client hangs on writes)
+    const patch: Record<string, unknown> = {}
+    if (updates.title !== undefined) patch.title = updates.title
+    if (updates.caption !== undefined) patch.caption = updates.caption
+    if (updates.tags !== undefined) patch.tags = updates.tags
+    if (Object.keys(patch).length > 0) {
+      rawDbFire('PATCH', `?id=eq.${encodeURIComponent(id)}`, patch)
     }
   },
 
@@ -411,15 +436,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
 
     // Delete from Supabase (demo nodes have "demo-" prefix, skip them)
     if (!id.startsWith('demo-')) {
-      const db = supabase
-      if (db) {
-        try {
-          const { error } = await db.from('canvas_nodes').delete().eq('id', id)
-          if (error) console.error('Supabase delete error:', error)
-        } catch (e) {
-          console.error('Failed to delete node:', e)
-        }
-      }
+      rawDbFire('DELETE', `?id=eq.${encodeURIComponent(id)}`, null)
     }
   },
 
