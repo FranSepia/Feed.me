@@ -16,8 +16,9 @@ function seededRandom(seed: number) {
   return x - Math.floor(x)
 }
 
-// Orbit layout when a node is selected — random every click, no overlaps.
-// Uses Math.random() so each tap/click gives a fresh arrangement.
+// Orbit layout when a node is selected — random every click, even distribution.
+// Uses a jittered grid: divides the visible ellipse into cells so every region
+// gets covered, then shuffles so assignment is random. z-range gives real depth.
 function computeOrbitPositions(
   nodes: NodeData[],
   selectedId: string | null
@@ -30,53 +31,63 @@ function computeOrbitPositions(
   const result: Record<string, [number, number, number]> = {}
   result[selectedId] = sel.position
 
-  const aspect = typeof window !== 'undefined' ? window.innerWidth / window.innerHeight : 1.6
-  // Must match ZOOM_DIST in CameraControls so orbit positions land inside the actual viewport
-  const zoomD  = isMobile ? 16 : 14
-  const fovV   = isMobile ? 65 : 60
-  // Visible half-extents at the selected node's depth (camera sits zoomD units away)
-  const halfH  = zoomD * Math.tan((fovV / 2) * Math.PI / 180) * 0.82
-  const halfW  = halfH * aspect
+  const N = others.length
+  if (N === 0) return result
 
-  // selExclude = half selected image height (1.75×3=5.25, half=2.625)
-  //            + half orbit image height (0.82×3=2.46 desktop, 0.55×3=1.65 mobile, halved)
-  // → ensures no image touches the selected one in screen space
-  const selExclude = isMobile ? 3.8 : 4.2
-  // minDist prevents orbit images from overlapping each other
-  const minDist    = isMobile ? 3.94 : 4.49
+  const aspect    = typeof window !== 'undefined' ? window.innerWidth / window.innerHeight : 1.6
+  const zoomD     = isMobile ? 16 : 14
+  const fovV      = isMobile ? 65 : 60
+  const halfH     = zoomD * Math.tan((fovV / 2) * Math.PI / 180) * 0.82
+  const halfW     = halfH * aspect
+  const selExclude = isMobile ? 3.8 : 4.2   // clear zone around selected node
+  const zRange     = isMobile ? 2.5 : 4.5   // ±depth spread in world units
 
-  // placed[0] = selected node at relative origin (screen centre after camera zoom)
-  const placed: [number, number][] = [[0, 0]]
+  // --- Jittered-grid candidate generation ---
+  // Divide the visible ellipse into a fine grid; one random candidate per cell.
+  // Cells that fall inside the exclusion zone or outside the ellipse are skipped.
+  // This guarantees uniform spatial coverage; shuffle makes assignment random.
+  const gridCols = Math.ceil(Math.sqrt(N * aspect) * 2.4)
+  const gridRows = Math.ceil(Math.sqrt(N / aspect) * 2.4)
+  const cellW    = (halfW * 2) / gridCols
+  const cellH    = (halfH * 2) / gridRows
 
-  others.forEach((node) => {
-    let bx = 0, by = 0, bestDist = -1
+  const candidates: [number, number][] = []
+  for (let row = 0; row < gridRows; row++) {
+    for (let col = 0; col < gridCols; col++) {
+      const cx = -halfW + (col + Math.random()) * cellW
+      const cy = -halfH + (row + Math.random()) * cellH
+      if ((cx / halfW) ** 2 + (cy / halfH) ** 2 > 1) continue   // outside ellipse
+      if (Math.sqrt(cx ** 2 + cy ** 2) < selExclude) continue    // too close to selected
+      candidates.push([cx, cy])
+    }
+  }
 
-    for (let a = 0; a < 200; a++) {
-      const cx = (Math.random() * 2 - 1) * halfW
-      const cy = (Math.random() * 2 - 1) * halfH
+  // Fisher-Yates shuffle — every node gets a uniformly random cell
+  for (let i = candidates.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[candidates[i], candidates[j]] = [candidates[j], candidates[i]]
+  }
 
-      let ok = true
-      let worstGap = Infinity
-      for (let pi = 0; pi < placed.length; pi++) {
-        const [px, py] = placed[pi]
-        const d = Math.sqrt((cx - px) ** 2 + (cy - py) ** 2)
-        const threshold = pi === 0 ? selExclude : minDist
-        const gap = d - threshold
-        if (gap < 0) { ok = false; worstGap = Math.min(worstGap, gap); break }
-        worstGap = Math.min(worstGap, gap)
+  others.forEach((node, idx) => {
+    let bx: number, by: number
+    if (idx < candidates.length) {
+      ;[bx, by] = candidates[idx]
+    } else {
+      // Fallback for overflow: random point inside ellipse, outside exclusion
+      let fx = 0, fy = 0
+      for (let a = 0; a < 80; a++) {
+        fx = (Math.random() * 2 - 1) * halfW
+        fy = (Math.random() * 2 - 1) * halfH
+        if ((fx / halfW) ** 2 + (fy / halfH) ** 2 <= 1 && Math.sqrt(fx ** 2 + fy ** 2) >= selExclude) break
       }
-
-      if (ok) { bx = cx; by = cy; break }
-      if (worstGap > bestDist) { bestDist = worstGap; bx = cx; by = cy }
+      bx = fx; by = fy
     }
 
-    placed.push([bx, by])
-    // Orbit nodes at same depth plane as selected; tiny z jitter avoids z-fighting.
-    // They render below the selected node because Scene sorts selected last.
     result[node.id] = [
       sel.position[0] + bx,
       sel.position[1] + by,
-      sel.position[2] - 0.2 - Math.random() * 0.3,
+      // Spread across ±zRange — nodes closer/further create real sense of depth
+      sel.position[2] + (Math.random() * 2 - 1) * zRange,
     ]
   })
 
