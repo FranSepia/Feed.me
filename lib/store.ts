@@ -463,15 +463,64 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       socials: clean,
     }))
 
-    // Persist via upsert — atomic single operation, errors propagate correctly.
-    // The previous raw-fetch DELETE+INSERT with `Prefer: return=minimal` had a silent
-    // failure mode: Supabase returns 204 even when RLS blocks the insert, so the UI
-    // showed "Guardado" while nothing was actually written.
+    // Persist via raw fetch with AbortController timeout.
+    //
+    // WHY raw fetch instead of supabase.from().upsert():
+    //   The Supabase JS client hangs indefinitely on all write operations in this
+    //   project (likely an issue with its internal fetch middleware / auth refresh).
+    //   Raw fetch bypasses that layer entirely and always resolves or aborts.
+    //
+    // WHY read token from localStorage instead of supabase.auth.getSession():
+    //   getSession() can trigger a network token-refresh which also hangs.
+    //   Reading localStorage is synchronous and never blocks.
+    //
+    // WHY Prefer: return=representation:
+    //   With return=minimal the server returns 204 even when RLS silently drops
+    //   the insert (no rows affected). return=representation gives us the inserted
+    //   row back, so we can confirm the save actually happened.
+
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const anonKey    = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    if (!supabaseUrl || !anonKey) throw new Error('Supabase env vars not set')
+
+    // Read JWT from localStorage — synchronous, never hangs
+    let token = anonKey
+    try {
+      const ref = new URL(supabaseUrl).hostname.split('.')[0]
+      const raw = localStorage.getItem(`sb-${ref}-auth-token`)
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        const at = parsed?.access_token ?? parsed?.currentSession?.access_token
+        if (at) token = at
+      }
+    } catch { /* fall back to anon key */ }
+
     const fixedId = `${userId}-socials-config`
-    const { error } = await supabase
-      .from('canvas_nodes')
-      .upsert(
-        {
+    const base    = `${supabaseUrl}/rest/v1/canvas_nodes`
+    const headers = {
+      'Content-Type': 'application/json',
+      'apikey': anonKey,
+      'Authorization': `Bearer ${token}`,
+      // return=representation sends the inserted row back so we can confirm it exists
+      'Prefer': 'return=representation',
+    }
+
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 8000)
+
+    try {
+      // Delete existing row first (fire-and-forget — no row = 204, that's fine)
+      await fetch(
+        `${base}?id=eq.${encodeURIComponent(fixedId)}`,
+        { method: 'DELETE', headers, signal: controller.signal }
+      )
+
+      // Insert fresh row
+      const res = await fetch(base, {
+        method: 'POST',
+        headers,
+        signal: controller.signal,
+        body: JSON.stringify({
           id: fixedId,
           user_id: userId,
           type: 'socials_config',
@@ -482,11 +531,27 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
           tags: [],
           position: [0, 0, 0],
           seed: 0,
-        },
-        { onConflict: 'id' }
-      )
+        }),
+      })
 
-    if (error) throw new Error(error.message)
+      if (!res.ok) {
+        const text = await res.text().catch(() => res.status.toString())
+        throw new Error(`Error del servidor (${res.status}): ${text}`)
+      }
+
+      // Verify the row was actually written (with return=representation we get the row back)
+      const rows: unknown[] = await res.json().catch(() => [])
+      if (!Array.isArray(rows) || rows.length === 0) {
+        throw new Error('El servidor no confirmó el guardado — revisa tus permisos')
+      }
+    } catch (err) {
+      if ((err as Error).name === 'AbortError') {
+        throw new Error('Tiempo de espera agotado — verifica tu conexión')
+      }
+      throw err
+    } finally {
+      clearTimeout(timer)
+    }
   },
 
   // Keep setSocial for individual changes (delegates to setSocials internally)
