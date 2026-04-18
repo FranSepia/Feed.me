@@ -31,29 +31,30 @@ function computeOrbitPositions(
   result[selectedId] = sel.position
 
   const aspect = typeof window !== 'undefined' ? window.innerWidth / window.innerHeight : 1.6
-  const zoomD  = isMobile ? 13 : 7.5
+  // Must match ZOOM_DIST in CameraControls so orbit positions land inside the actual viewport
+  const zoomD  = isMobile ? 16 : 14
   const fovV   = isMobile ? 65 : 60
-  // Visible area at the zoom depth (camera will sit zoomD units in front of selected node)
-  const halfH  = zoomD * Math.tan((fovV / 2) * Math.PI / 180) * 0.80
+  // Visible half-extents at the selected node's depth (camera sits zoomD units away)
+  const halfH  = zoomD * Math.tan((fovV / 2) * Math.PI / 180) * 0.82
   const halfW  = halfH * aspect
 
-  // selExclude must be small enough to fit inside the visible screen.
-  // At desktop zoom: visible half-height ≈ 4.3 units — 9.0 was larger than the screen diagonal!
-  // selExclude ≈ half the selected image height (1.75 × 3 = 5.25, half ≈ 2.6) + orbit image half-height
-  const selExclude = isMobile ? 4.0 : 3.4
-  const minDist    = isMobile ? 3.2 : 2.8
+  // selExclude = half selected image height (1.75×3=5.25, half=2.625)
+  //            + half orbit image height (0.82×3=2.46 desktop, 0.55×3=1.65 mobile, halved)
+  // → ensures no image touches the selected one in screen space
+  const selExclude = isMobile ? 3.8 : 4.2
+  // minDist prevents orbit images from overlapping each other
+  const minDist    = isMobile ? 2.8 : 3.2
 
-  // placed[0] = selected node at relative origin
+  // placed[0] = selected node at relative origin (screen centre after camera zoom)
   const placed: [number, number][] = [[0, 0]]
 
   others.forEach((node) => {
     let bx = 0, by = 0, bestDist = -1
 
-    for (let a = 0; a < 160; a++) {
+    for (let a = 0; a < 200; a++) {
       const cx = (Math.random() * 2 - 1) * halfW
       const cy = (Math.random() * 2 - 1) * halfH
 
-      // Check distance against each placed node with its own threshold
       let ok = true
       let worstGap = Infinity
       for (let pi = 0; pi < placed.length; pi++) {
@@ -70,12 +71,12 @@ function computeOrbitPositions(
     }
 
     placed.push([bx, by])
-    // Orbit nodes go behind the selected node so there is clear depth separation
-    const zBehind = sel.position[2] - 1.5 - Math.random() * 2.5
+    // Orbit nodes at same depth plane as selected; tiny z jitter avoids z-fighting.
+    // They render below the selected node because Scene sorts selected last.
     result[node.id] = [
       sel.position[0] + bx,
       sel.position[1] + by,
-      zBehind,
+      sel.position[2] - 0.2 - Math.random() * 0.3,
     ]
   })
 

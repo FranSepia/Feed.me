@@ -52,9 +52,10 @@ function layoutPositions(count: number): [number, number, number][] {
   const baseW = baseH * aspect
   // Scale oval up for many nodes so they all have room
   const scaleF = Math.max(1, Math.sqrt(count / 30))
-  const Rx = baseW * scaleF * 0.075
-  const Ry = baseH * scaleF * 0.1
-  const MIN_DIST = isMobile ? 6.0 : 7.0
+  const Rx = baseW * scaleF * 0.70
+  const Ry = baseH * scaleF * 0.70
+  // MIN_DIST ≈ max image size at scale 1 to prevent visual overlap
+  const MIN_DIST = isMobile ? 3.8 : 4.2
 
   const placed: [number, number][] = []
   const result: [number, number, number][] = []

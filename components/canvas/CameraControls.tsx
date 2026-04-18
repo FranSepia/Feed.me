@@ -6,16 +6,16 @@ import * as THREE from 'three'
 import { useCanvasStore } from '@/lib/store'
 
 const ZOOM_DIST_DESKTOP: Record<string, number> = {
-  image: 7.5,
-  video: 7.5,
+  image: 14,
+  video: 14,
   text: 5.5,
   spotify: 5.5,
   social: 5.5,
 }
 
 const ZOOM_DIST_MOBILE: Record<string, number> = {
-  image: 13,
-  video: 13,
+  image: 16,
+  video: 16,
   text: 10,
   spotify: 10,
   social: 10,
