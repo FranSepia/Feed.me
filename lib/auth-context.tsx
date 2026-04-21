@@ -73,7 +73,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       })
       if (!res.ok) throw new Error('fetch error')
       const rows = await res.json()
-      if (rows && rows.length > 0) {
+      if (Array.isArray(rows) && rows.length > 0) {
         const data = rows[0]
         setProfile({
           id: data.id,

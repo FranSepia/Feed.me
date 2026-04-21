@@ -290,7 +290,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       }
 
       const data = await res.json()
-      const allRows = data ?? []
+      const allRows = Array.isArray(data) ? data : []
 
       // Socials are saved as a special 'socials_config' row — take the most recent one
       const socialsRow = [...allRows].reverse().find(r => r.type === 'socials_config')
