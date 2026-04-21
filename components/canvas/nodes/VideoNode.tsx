@@ -129,7 +129,7 @@ export function VideoNode({ node, isSelected, isDimmed, isOrbit, targetPosition 
         zIndexRange={[50, 0]}
         style={{ pointerEvents: (isSelected || autoPlay) ? 'all' : 'none' }}
       >
-        <div style={{ opacity: isDimmed ? 0.32 : 1, transition: 'opacity 0.4s', position: 'relative' }}>
+        <div style={{ opacity: isDimmed ? 0.4 : 1, transition: 'opacity 0.4s', position: 'relative' }}>
 
           {/* Tags above card when selected */}
           {isSelected && node.tags.length > 0 && (

@@ -29,6 +29,8 @@ function computeOrbitPositions(
   const others = nodes.filter((n) => n.id !== selectedId)
   const result: Record<string, [number, number, number]> = {}
   result[selectedId] = sel.position
+  
+  const selTags = sel.tags || []
 
   const aspect = typeof window !== 'undefined' ? window.innerWidth / window.innerHeight : 1.6
   // Must match ZOOM_DIST in CameraControls so orbit positions land inside the actual viewport
@@ -71,12 +73,17 @@ function computeOrbitPositions(
     }
 
     placed.push([bx, by])
+    
+    const isUnrelated = selTags.length > 0 && !node.tags.some(t => selTags.includes(t))
+    const spreadMultiplier = isUnrelated ? 2.2 : 1.0
+    const zOffset = isUnrelated ? -28 - (Math.random() * 10) : (Math.random() * 2 - 1) * 4.0
+    
     // Orbit nodes at same depth plane as selected; tiny z jitter avoids z-fighting.
     // They render below the selected node because Scene sorts selected last.
     result[node.id] = [
-      sel.position[0] + bx,
-      sel.position[1] + by,
-      sel.position[2] + (Math.random() * 2 - 1) * 4.0,
+      sel.position[0] + bx * spreadMultiplier,
+      sel.position[1] + by * spreadMultiplier,
+      sel.position[2] + zOffset,
     ]
   })
 
@@ -140,6 +147,8 @@ export function Scene() {
     a.id === selectedNode ? 1 : b.id === selectedNode ? -1 : 0
   )
 
+  const selNodeMap = useMemo(() => nodes.find(n => n.id === selectedNode), [nodes, selectedNode])
+
   return (
     <>
       <CameraControls />
@@ -150,7 +159,13 @@ export function Scene() {
         const matchesFilter = filterActive
           ? node.tags.some((t) => filterTags.includes(t))
           : true
-        const isDimmed = filterActive && !selectedNode && !matchesFilter
+          
+        let isUnrelated = false
+        if (selNodeMap && selNodeMap.tags.length > 0 && node.id !== selectedNode) {
+          isUnrelated = !node.tags.some(t => selNodeMap.tags.includes(t))
+        }
+
+        const isDimmed = (filterActive && !selectedNode && !matchesFilter) || isUnrelated
         const isOrbit = !isSelected && selectedNode !== null
 
         // Priority: orbit positions > perimeter positions > default position

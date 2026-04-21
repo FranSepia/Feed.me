@@ -44,7 +44,7 @@ export function ImageNode({ node, isSelected, isDimmed, isOrbit, targetPosition 
   const w = 3 * aspect
   const h = 3
 
-  const targetOpacity = isDimmed ? 0.32 : 1
+  const targetOpacity = isDimmed ? 0.4 : 1
   // Base orbit scale is 20% smaller than before; each node gets ±20% variation
   // from its seed so the cloud of thumbnails looks organic, not uniform.
   const orbitBase = typeof window !== 'undefined' && window.innerWidth < 600 ? 0.44 : 0.66

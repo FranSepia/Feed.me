@@ -144,7 +144,7 @@ export function SpotifyNode({ node, isSelected, isDimmed, isOrbit, targetPositio
           onClick={handleNodeClick}
           style={{
             position: 'relative',
-            opacity: isDimmed ? 0.32 : 1,
+            opacity: isDimmed ? 0.4 : 1,
             transition: 'opacity 0.4s',
             userSelect: 'none',
             cursor: editMode ? 'default' : 'pointer',

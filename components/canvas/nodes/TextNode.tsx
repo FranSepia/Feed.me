@@ -50,7 +50,7 @@ export function TextNode({ node, isSelected, isDimmed, isOrbit, targetPosition }
     from: { position: entranceFrom.current.position, scale: 0, opacity: 0 },
     position: targetPosition,
     scale: isSelected ? 1.12 : isOrbit ? (hovered ? orbitScale + 0.07 : orbitScale) : hovered ? 1.04 : 1,
-    opacity: isDimmed ? 0.32 : 1,
+    opacity: isDimmed ? 0.4 : 1,
     config: { mass: 1.4, tension: 120, friction: 28 },
     delay: entranceFrom.current.delay,
   })
@@ -110,7 +110,7 @@ export function TextNode({ node, isSelected, isDimmed, isOrbit, targetPosition }
             padding: '16px',
             backdropFilter: 'blur(16px)',
             WebkitBackdropFilter: 'blur(16px)',
-            opacity: isDimmed ? 0.32 : 1,
+            opacity: isDimmed ? 0.4 : 1,
             transition: 'opacity 0.4s ease',
             display: 'flex',
             flexDirection: 'column',
