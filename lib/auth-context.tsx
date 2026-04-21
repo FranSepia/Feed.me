@@ -52,21 +52,40 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   const loadProfile = useCallback(async (userId: string) => {
-    if (!supabase) return
-    const { data } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', userId)
-      .single()
-    if (data) {
-      setProfile({
-        id: data.id,
-        username: data.username,
-        display_name: data.display_name,
-        avatar_url: data.avatar_url,
-        bio: data.bio,
-        bg_color: data.bg_color ?? '#ede8de',
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    if (!url || !key) return
+
+    let token = key
+    try {
+      const ref = new URL(url).hostname.split('.')[0]
+      const raw = localStorage.getItem(`sb-${ref}-auth-token`)
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        const at = parsed?.access_token ?? parsed?.currentSession?.access_token
+        if (at) token = at
+      }
+    } catch { /* fall back */ }
+
+    try {
+      const res = await fetch(`${url}/rest/v1/profiles?id=eq.${userId}&select=*`, {
+        headers: { apikey: key, Authorization: `Bearer ${token}` }
       })
+      if (!res.ok) throw new Error('fetch error')
+      const rows = await res.json()
+      if (rows && rows.length > 0) {
+        const data = rows[0]
+        setProfile({
+          id: data.id,
+          username: data.username,
+          display_name: data.display_name,
+          avatar_url: data.avatar_url,
+          bio: data.bio,
+          bg_color: data.bg_color ?? '#ede8de',
+        })
+      }
+    } catch (e) {
+      console.error('loadProfile error', e)
     }
   }, [])
 
@@ -183,9 +202,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = async () => {
     if (!supabase) return
     try {
-      await supabase.auth.signOut()
+      const timeout = new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 1500))
+      await Promise.race([supabase.auth.signOut(), timeout])
     } catch {
-      // Token already invalid — clean up manually so the ghost session is destroyed
+      // Token already invalid or hanging — clean up manually so the ghost session is destroyed
       clearSupabaseStorage()
     }
     setUser(null)

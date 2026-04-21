@@ -175,7 +175,8 @@ interface CanvasStore {
 function rawDbFire(
   method: 'POST' | 'PATCH' | 'DELETE',
   queryParams: string,
-  body: Record<string, unknown> | null
+  body: Record<string, unknown> | null,
+  endpoint: string = '/rest/v1/canvas_nodes'
 ): void {
   if (typeof window === 'undefined') return
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -196,7 +197,7 @@ function rawDbFire(
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 8000)
 
-  fetch(`${supabaseUrl}/rest/v1/canvas_nodes${queryParams}`, {
+  fetch(`${supabaseUrl}${endpoint}${queryParams}`, {
     method,
     signal: controller.signal,
     headers: {
@@ -215,7 +216,7 @@ function rawDbFire(
 }
 
 export const useCanvasStore = create<CanvasStore>((set, get) => ({
-  nodes: DEMO_NODES,
+  nodes: [],
   selectedNode: null,
   playingVideoUrl: null,
   bgColor: '#ede8de',
@@ -241,17 +242,14 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   setBgColor: (color) => {
     set({ bgColor: color })
     // Persist to profile if this is the owner's canvas
-    const { userId, readOnly } = get()
-    if (!readOnly && userId && supabase) {
-      supabase.from('profiles').update({ bg_color: color }).eq('id', userId).then()
+    if (!readOnly && userId) {
+      rawDbFire('PATCH', `?id=eq.${encodeURIComponent(userId)}`, { bg_color: color }, '/rest/v1/profiles')
     }
   },
 
   resetCanvas: () => {
-    const freshPositions = generatePositions(DEMO_NODES.length)
-    const freshDemo = DEMO_NODES.map((n, i) => ({ ...n, position: freshPositions[i] }))
     set({
-      nodes: freshDemo,
+      nodes: [],
       selectedNode: null,
       playingVideoUrl: null,
       nodesLoaded: false,
@@ -265,17 +263,33 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
 
   // Load nodes for a given user
   loadFromSupabase: async (userId: string) => {
-    const db = supabase
-    if (!db) { set({ nodesLoaded: true }); return }
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const anonKey    = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+    if (!supabaseUrl || !anonKey) { set({ nodesLoaded: true }); return }
+
+    let token = anonKey
     try {
-      const { data, error } = await db
-        .from('canvas_nodes')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: true })
+      const ref = new URL(supabaseUrl).hostname.split('.')[0]
+      const raw = localStorage.getItem(`sb-${ref}-auth-token`)
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        const at = parsed?.access_token ?? parsed?.currentSession?.access_token
+        if (at) token = at
+      }
+    } catch { /* */ }
 
-      if (error) { console.error('Supabase load error:', error); set({ nodesLoaded: true }); return }
+    try {
+      const res = await fetch(`${supabaseUrl}/rest/v1/canvas_nodes?user_id=eq.${userId}&order=created_at.asc`, {
+        headers: { apikey: anonKey, Authorization: `Bearer ${token}` }
+      })
 
+      if (!res.ok) {
+        console.error('Supabase load error:', await res.text())
+        set({ nodesLoaded: true })
+        return
+      }
+
+      const data = await res.json()
       const allRows = data ?? []
 
       // Socials are saved as a special 'socials_config' row — take the most recent one
@@ -339,14 +353,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
 
         set({ nodes: [...loaded, ...socialNodes], socials, nodesLoaded: true })
       } else {
-        const { readOnly } = get()
-        if (readOnly) {
-          set({ nodes: socialNodes, socials, nodesLoaded: true })
-        } else {
-          const positions = layoutPositions(DEMO_NODES.length)
-          const demo = DEMO_NODES.map((n, i) => ({ ...n, position: positions[i] }))
-          set({ nodes: demo, socials, nodesLoaded: true })
-        }
+        set({ nodes: socialNodes, socials, nodesLoaded: true })
       }
     } catch (e) {
       console.error('Failed to load from Supabase:', e)
