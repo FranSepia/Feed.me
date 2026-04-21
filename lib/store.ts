@@ -242,6 +242,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   setBgColor: (color) => {
     set({ bgColor: color })
     // Persist to profile if this is the owner's canvas
+    const { readOnly, userId } = get()
     if (!readOnly && userId) {
       rawDbFire('PATCH', `?id=eq.${encodeURIComponent(userId)}`, { bg_color: color }, '/rest/v1/profiles')
     }
