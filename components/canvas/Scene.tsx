@@ -8,6 +8,7 @@ import { SpotifyNode } from './nodes/SpotifyNode'
 import { VideoNode } from './nodes/VideoNode'
 import { SocialNode } from './nodes/SocialNode'
 import { CameraControls } from './CameraControls'
+import { SkeletonNodes } from './SkeletonNodes'
 
 const isMobile = typeof window !== 'undefined' && window.innerWidth < 600
 
@@ -125,6 +126,7 @@ function computePerimeterPositions(
 
 export function Scene() {
   const nodes = useCanvasStore((s) => s.nodes)
+  const nodesLoaded = useCanvasStore((s) => s.nodesLoaded)
   const selectedNode = useCanvasStore((s) => s.selectedNode)
   const filterTags = useCanvasStore((s) => s.filterTags)
 
@@ -152,6 +154,7 @@ export function Scene() {
   return (
     <>
       <CameraControls />
+      {!nodesLoaded && <SkeletonNodes />}
       {sorted.map((node) => {
         const isSelected = selectedNode === node.id
 
