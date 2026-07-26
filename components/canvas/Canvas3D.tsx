@@ -25,9 +25,11 @@ export function Canvas3D() {
     <div className="w-full h-full absolute inset-0">
       <Canvas
         camera={{ position: [0, 0, initZ], fov: initFov, near: 0.1, far: 200 }}
-        gl={{ antialias: true, alpha: false }}
+        gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }}
         style={{ background: bgColor }}
-        dpr={[1, 2]}
+        // Phones are fill-rate bound long before they run out of detail; rendering
+        // a busy canvas at full 2× retina is a large cost for no visible gain.
+        dpr={isMobileInit ? [1, 1.5] : [1, 2]}
         onPointerMissed={() => setSelectedNode(null)}
       >
         <color attach="background" args={[bgColor]} />

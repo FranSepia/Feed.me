@@ -16,7 +16,8 @@ interface SkeletonItemProps {
 function SkeletonItem({ position, index, aspect, light }: SkeletonItemProps) {
   const meshRef = useRef<THREE.Mesh>(null)
   const matRef = useRef<THREE.MeshBasicMaterial>(null)
-  const glowRef = useRef<THREE.MeshBasicMaterial>(null)
+  // Attached to the border's <lineBasicMaterial>, not a mesh material
+  const glowRef = useRef<THREE.LineBasicMaterial>(null)
 
   const w = 3 * aspect
   const h = 3
@@ -98,18 +99,21 @@ function SkeletonItem({ position, index, aspect, light }: SkeletonItemProps) {
   )
 }
 
-export function SkeletonNodes() {
+const MAX_SKELETONS = 10
+
+export function SkeletonNodes({ count = MAX_SKELETONS }: { count?: number }) {
   const bgColor = useCanvasStore((s) => s.bgColor)
   const light = isLightBg(bgColor)
 
-  const count = 10
-  const positions = useMemo(() => generatePositions(count), [])
+  // Always generated at full length so positions stay put as `count` shrinks —
+  // cards then disappear one at a time as their real image finishes loading.
+  const positions = useMemo(() => generatePositions(MAX_SKELETONS), [])
 
   const aspects = [1.33, 1.0, 1.4, 0.85, 1.25, 1.5, 0.9, 1.2, 1.33, 1.1]
 
   return (
     <group>
-      {positions.map((pos, i) => (
+      {positions.slice(0, Math.min(count, MAX_SKELETONS)).map((pos, i) => (
         <SkeletonItem
           key={`skeleton-${i}`}
           position={pos}

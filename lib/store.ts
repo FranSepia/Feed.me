@@ -146,12 +146,14 @@ interface CanvasStore {
   socials: Record<string, string>
   nodesLoaded: boolean
   filterTags: string[]
+  lastError: string | null    // surfaced to the user when a write is rolled back
 
   // Multi-user fields
   userId: string | null       // whose canvas is currently loaded
   readOnly: boolean           // true = public view, false = editor
 
   // Actions
+  setLastError: (msg: string | null) => void
   setUserId: (id: string | null) => void
   setReadOnly: (v: boolean) => void
   setSelectedNode: (id: string | null) => void
@@ -169,50 +171,164 @@ interface CanvasStore {
   resetCanvas: () => void
 }
 
-// Raw fetch helper for DB writes — bypasses the Supabase JS client which hangs
-// indefinitely on all write operations in this project. Fire-and-forget: logs
-// errors but never blocks the caller.
-function rawDbFire(
+// ─── Auth token ──────────────────────────────────────────────────────────
+//
+// Tokens are read straight from localStorage (synchronous, never blocks) and
+// refreshed through the auth REST endpoint with raw fetch. We deliberately do
+// not use supabase.auth.getSession()/refreshSession(): the JS client hangs on
+// this project's writes, and getSession() can trigger that same stalled refresh
+// internally.
+
+function authStorageKey(supabaseUrl: string): string {
+  return `sb-${new URL(supabaseUrl).hostname.split('.')[0]}-auth-token`
+}
+
+function readStoredSession(supabaseUrl: string): { access_token?: string; refresh_token?: string } | null {
+  try {
+    const raw = localStorage.getItem(authStorageKey(supabaseUrl))
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    const session = parsed?.currentSession ?? parsed
+    return session?.access_token ? session : null
+  } catch { return null }
+}
+
+// Seconds left on a JWT's `exp` claim. Returns 0 when unreadable, so an
+// undecodable token is treated as expired rather than silently used.
+function secondsUntilExpiry(jwt: string): number {
+  try {
+    const payload = JSON.parse(atob(jwt.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')))
+    return typeof payload?.exp === 'number' ? payload.exp - Math.floor(Date.now() / 1000) : 0
+  } catch { return 0 }
+}
+
+let refreshInFlight: Promise<string | null> | null = null
+
+async function refreshAccessToken(supabaseUrl: string, anonKey: string, refreshToken: string): Promise<string | null> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 8000)
+  try {
+    const res = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=refresh_token`, {
+      method: 'POST',
+      signal: controller.signal,
+      headers: { 'Content-Type': 'application/json', apikey: anonKey },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    })
+    if (!res.ok) return null
+    const data = await res.json()
+    if (!data?.access_token) return null
+
+    // Write the new session back so the JS client (Auth/Storage) picks it up too
+    try {
+      const raw = localStorage.getItem(authStorageKey(supabaseUrl))
+      const parsed = raw ? JSON.parse(raw) : {}
+      localStorage.setItem(
+        authStorageKey(supabaseUrl),
+        JSON.stringify(
+          parsed?.currentSession
+            ? { ...parsed, currentSession: { ...parsed.currentSession, ...data } }
+            : { ...parsed, ...data }
+        )
+      )
+    } catch { /* token is still usable for this request */ }
+
+    return data.access_token as string
+  } catch {
+    return null
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+// Returns a valid access token, refreshing it first when it has expired.
+// This matters most on mobile: a backgrounded tab has its timers frozen, so the
+// JS client's auto-refresh never fires and the stored token goes stale — every
+// write then came back 401 and was discarded without a trace.
+async function getAuthToken(): Promise<string | null> {
+  if (typeof window === 'undefined') return null
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const anonKey    = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  if (!supabaseUrl || !anonKey) return null
+
+  const session = readStoredSession(supabaseUrl)
+  if (!session?.access_token) return null
+  if (secondsUntilExpiry(session.access_token) > 60) return session.access_token
+  if (!session.refresh_token) return null
+
+  // Share a single refresh between concurrent writes
+  if (!refreshInFlight) {
+    refreshInFlight = refreshAccessToken(supabaseUrl, anonKey, session.refresh_token)
+      .finally(() => { refreshInFlight = null })
+  }
+  return refreshInFlight
+}
+
+// ─── DB writes ───────────────────────────────────────────────────────────
+
+type WriteResult = { ok: true } | { ok: false; error: string }
+
+// Performs a write and confirms it actually changed something.
+//
+// WHY Prefer: return=representation (not return=minimal):
+//   PostgREST answers 204 to a PATCH/DELETE that matched zero rows — which is
+//   exactly what happens when RLS filters the row out. That is indistinguishable
+//   from success, so writes looked fine and then vanished on reload. Asking for
+//   the affected rows back lets us tell the two apart.
+async function rawDbWrite(
   method: 'POST' | 'PATCH' | 'DELETE',
   queryParams: string,
   body: Record<string, unknown> | null,
   endpoint: string = '/rest/v1/canvas_nodes'
-): void {
-  if (typeof window === 'undefined') return
+): Promise<WriteResult> {
+  if (typeof window === 'undefined') return { ok: false, error: 'No disponible en el servidor' }
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const anonKey    = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  if (!supabaseUrl || !anonKey) return
+  if (!supabaseUrl || !anonKey) return { ok: false, error: 'Supabase no está configurado' }
 
-  let token = anonKey
-  try {
-    const ref = new URL(supabaseUrl).hostname.split('.')[0]
-    const raw = localStorage.getItem(`sb-${ref}-auth-token`)
-    if (raw) {
-      const parsed = JSON.parse(raw)
-      const at = parsed?.access_token ?? parsed?.currentSession?.access_token
-      if (at) token = at
-    }
-  } catch { /* fall back to anon key */ }
+  const token = await getAuthToken()
+  if (!token) return { ok: false, error: 'Tu sesión expiró — volvé a iniciar sesión' }
 
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 8000)
 
-  fetch(`${supabaseUrl}${endpoint}${queryParams}`, {
-    method,
-    signal: controller.signal,
-    headers: {
-      'Content-Type': 'application/json',
-      'apikey': anonKey,
-      'Authorization': `Bearer ${token}`,
-      'Prefer': 'return=minimal',
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  })
-    .then(res => {
-      if (!res.ok) res.text().then(t => console.error(`[Feed.Me] DB ${method} ${res.status}:`, t)).catch(() => {})
+  try {
+    const res = await fetch(`${supabaseUrl}${endpoint}${queryParams}`, {
+      method,
+      signal: controller.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        'apikey': anonKey,
+        'Authorization': `Bearer ${token}`,
+        'Prefer': 'return=representation',
+      },
+      body: body ? JSON.stringify(body) : undefined,
     })
-    .catch(err => { if (err.name !== 'AbortError') console.error(`[Feed.Me] DB ${method} failed:`, err) })
-    .finally(() => clearTimeout(timer))
+
+    if (!res.ok) {
+      const detail = await res.text().catch(() => '')
+      console.error(`[Feed.Me] DB ${method} ${res.status}:`, detail)
+      if (res.status === 401 || res.status === 403) return { ok: false, error: 'Tu sesión expiró — volvé a iniciar sesión' }
+      if (res.status === 409) return { ok: false, error: 'Ese elemento ya existe' }
+      return { ok: false, error: `Error del servidor (${res.status})` }
+    }
+
+    const rows = await res.json().catch(() => null)
+    if (!Array.isArray(rows) || rows.length === 0) {
+      console.error(`[Feed.Me] DB ${method} affected 0 rows (RLS or unknown id):`, queryParams)
+      return { ok: false, error: 'No se guardó — revisá tus permisos' }
+    }
+    return { ok: true }
+  } catch (err) {
+    console.error(`[Feed.Me] DB ${method} failed:`, err)
+    return {
+      ok: false,
+      error: (err as Error).name === 'AbortError'
+        ? 'Tiempo de espera agotado — revisá tu conexión'
+        : 'No se pudo conectar',
+    }
+  } finally {
+    clearTimeout(timer)
+  }
 }
 
 export const useCanvasStore = create<CanvasStore>((set, get) => ({
@@ -225,9 +341,11 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   socials: {},
   nodesLoaded: false,
   filterTags: [],
+  lastError: null,
   userId: null,
   readOnly: false,
 
+  setLastError: (msg) => set({ lastError: msg }),
   setUserId: (id) => set({ userId: id }),
   setReadOnly: (v) => set({ readOnly: v, editMode: false }),
   setSelectedNode: (id) => set({ selectedNode: id }),
@@ -241,10 +359,13 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
 
   setBgColor: (color) => {
     set({ bgColor: color })
-    // Persist to profile if this is the owner's canvas
+    // Persist to profile if this is the owner's canvas.
+    // Not rolled back on failure: the picker fires rapidly while dragging and
+    // reverting mid-drag would fight the user. We just report it.
     const { readOnly, userId } = get()
     if (!readOnly && userId) {
-      rawDbFire('PATCH', `?id=eq.${encodeURIComponent(userId)}`, { bg_color: color }, '/rest/v1/profiles')
+      rawDbWrite('PATCH', `?id=eq.${encodeURIComponent(userId)}`, { bg_color: color }, '/rest/v1/profiles')
+        .then((r) => { if (!r.ok) set({ lastError: `No se guardó el color: ${r.error}` }) })
     }
   },
 
@@ -256,6 +377,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       nodesLoaded: false,
       socials: {},
       filterTags: [],
+      lastError: null,
       userId: null,
       readOnly: false,
       editMode: false,
@@ -268,16 +390,9 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     const anonKey    = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
     if (!supabaseUrl || !anonKey) { set({ nodesLoaded: true }); return }
 
-    let token = anonKey
-    try {
-      const ref = new URL(supabaseUrl).hostname.split('.')[0]
-      const raw = localStorage.getItem(`sb-${ref}-auth-token`)
-      if (raw) {
-        const parsed = JSON.parse(raw)
-        const at = parsed?.access_token ?? parsed?.currentSession?.access_token
-        if (at) token = at
-      }
-    } catch { /* */ }
+    // Refresh an expired token first. Loading with a stale one returned 401 and
+    // rendered an empty canvas, which looks exactly like "everything got deleted".
+    const token = (await getAuthToken()) ?? anonKey
 
     try {
       const res = await fetch(`${supabaseUrl}/rest/v1/canvas_nodes?user_id=eq.${userId}&order=created_at.asc`, {
@@ -286,7 +401,12 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
 
       if (!res.ok) {
         console.error('Supabase load error:', await res.text())
-        set({ nodesLoaded: true })
+        set({
+          nodesLoaded: true,
+          lastError: res.status === 401 || res.status === 403
+            ? 'No se pudo cargar tu canvas — volvé a iniciar sesión'
+            : 'No se pudo cargar tu canvas — revisá tu conexión',
+        })
         return
       }
 
@@ -358,7 +478,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       }
     } catch (e) {
       console.error('Failed to load from Supabase:', e)
-      set({ nodesLoaded: true })
+      set({ nodesLoaded: true, lastError: 'No se pudo cargar tu canvas — revisá tu conexión' })
     }
   },
 
@@ -366,7 +486,10 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     const { readOnly, userId } = get()
     if (readOnly || !userId) return
 
-    const id = `node-${Date.now()}`
+    // Random suffix: `node-${Date.now()}` alone collided when several images
+    // were added in the same millisecond, and the duplicate primary key made the
+    // second insert fail.
+    const id = `node-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
     const isMob = typeof window !== 'undefined' && window.innerWidth < 600
     const aspect = typeof window !== 'undefined' ? window.innerWidth / window.innerHeight : 1.6
     const baseH = isMob ? 19 : 11
@@ -393,8 +516,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     // Optimistic update
     set((state) => ({ nodes: [...state.nodes, newNode] }))
 
-    // Persist — fire-and-forget via raw fetch (JS client hangs on writes)
-    rawDbFire('POST', '', {
+    const result = await rawDbWrite('POST', '', {
       id,
       user_id: userId,
       type: node.type,
@@ -406,45 +528,94 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       position: pos,
       seed: node.seed,
     })
+
+    // Roll back so the canvas never shows something the database doesn't have
+    if (!result.ok) {
+      set((state) => ({
+        nodes: state.nodes.filter((n) => n.id !== id),
+        selectedNode: state.selectedNode === id ? null : state.selectedNode,
+        lastError: result.error,
+      }))
+    }
   },
 
   updateNode: async (id, updates) => {
     const { readOnly, userId } = get()
     if (readOnly || !userId) return
 
+    const before = get().nodes.find((n) => n.id === id)
+    if (!before) return
+
     // Optimistic update
     set((state) => ({
       nodes: state.nodes.map((n) => (n.id === id ? { ...n, ...updates } : n)),
     }))
 
-    // Persist — fire-and-forget via raw fetch (JS client hangs on writes)
     const patch: Record<string, unknown> = {}
     if (updates.title !== undefined) patch.title = updates.title
     if (updates.caption !== undefined) patch.caption = updates.caption
     if (updates.tags !== undefined) patch.tags = updates.tags
-    if (Object.keys(patch).length > 0) {
-      rawDbFire('PATCH', `?id=eq.${encodeURIComponent(id)}`, patch)
+    // `date` and `content` used to be missing here, so changing a date or the
+    // body of a text node updated the canvas but was never written to the DB.
+    if (updates.date !== undefined) patch.date = updates.date ?? null
+    if (updates.content !== undefined) patch.content = updates.content
+    if (Object.keys(patch).length === 0) return
+
+    const result = await rawDbWrite('PATCH', `?id=eq.${encodeURIComponent(id)}`, patch)
+
+    if (!result.ok) {
+      // Restore only the fields this call touched, so a concurrent edit to a
+      // different field isn't clobbered by the rollback.
+      const revert: Record<string, unknown> = {}
+      for (const key of Object.keys(updates)) revert[key] = before[key as keyof NodeData]
+      set((state) => ({
+        nodes: state.nodes.map((n) => (n.id === id ? { ...n, ...revert } : n)),
+        lastError: result.error,
+      }))
     }
   },
 
   removeNode: async (id) => {
-    const { readOnly } = get()
-    if (readOnly) return
+    const { readOnly, userId } = get()
+    if (readOnly || !userId) return
 
-    const node = get().nodes.find((n) => n.id === id)
-    const newSocials = { ...get().socials }
-    if (node?.type === 'social' && node.title) delete newSocials[node.title]
+    const index = get().nodes.findIndex((n) => n.id === id)
+    if (index === -1) return
+    const node = get().nodes[index]
+
+    // Socials have no row of their own — they live inside the single
+    // 'socials_config' row. The old code fired a DELETE at the synthetic id
+    // `<userId>-social-<platform>`, which matched nothing, so removed socials
+    // came back on the next load. Route them through setSocials instead.
+    if (node.type === 'social') {
+      const next = { ...get().socials }
+      if (node.title) delete next[node.title]
+      try {
+        await get().setSocials(next)
+      } catch (err) {
+        set({ lastError: (err as Error).message })
+      }
+      return
+    }
 
     // Optimistic update
     set((state) => ({
       nodes: state.nodes.filter((n) => n.id !== id),
       selectedNode: state.selectedNode === id ? null : state.selectedNode,
-      socials: newSocials,
     }))
 
-    // Delete from Supabase (demo nodes have "demo-" prefix, skip them)
-    if (!id.startsWith('demo-')) {
-      rawDbFire('DELETE', `?id=eq.${encodeURIComponent(id)}`, null)
+    // Demo nodes only ever exist client-side
+    if (id.startsWith('demo-')) return
+
+    const result = await rawDbWrite('DELETE', `?id=eq.${encodeURIComponent(id)}`, null)
+
+    // Put it back where it was — the database still has it
+    if (!result.ok) {
+      set((state) => {
+        const nodes = [...state.nodes]
+        nodes.splice(Math.min(index, nodes.length), 0, node)
+        return { nodes, lastError: result.error }
+      })
     }
   },
 
@@ -495,9 +666,10 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     //   project (likely an issue with its internal fetch middleware / auth refresh).
     //   Raw fetch bypasses that layer entirely and always resolves or aborts.
     //
-    // WHY read token from localStorage instead of supabase.auth.getSession():
+    // WHY getAuthToken() instead of supabase.auth.getSession():
     //   getSession() can trigger a network token-refresh which also hangs.
-    //   Reading localStorage is synchronous and never blocks.
+    //   getAuthToken() reads localStorage synchronously and only goes to the
+    //   network (with a timeout) when the token has actually expired.
     //
     // WHY Prefer: return=representation:
     //   With return=minimal the server returns 204 even when RLS silently drops
@@ -508,17 +680,8 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     const anonKey    = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
     if (!supabaseUrl || !anonKey) throw new Error('Supabase env vars not set')
 
-    // Read JWT from localStorage — synchronous, never hangs
-    let token = anonKey
-    try {
-      const ref = new URL(supabaseUrl).hostname.split('.')[0]
-      const raw = localStorage.getItem(`sb-${ref}-auth-token`)
-      if (raw) {
-        const parsed = JSON.parse(raw)
-        const at = parsed?.access_token ?? parsed?.currentSession?.access_token
-        if (at) token = at
-      }
-    } catch { /* fall back to anon key */ }
+    const token = await getAuthToken()
+    if (!token) throw new Error('Tu sesión expiró — volvé a iniciar sesión')
 
     const fixedId = `${userId}-socials-config`
     const base    = `${supabaseUrl}/rest/v1/canvas_nodes`

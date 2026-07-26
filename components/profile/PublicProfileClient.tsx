@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { FilterButton } from '@/components/ui/FilterButton'
 import { PublicBanner } from '@/components/ui/PublicBanner'
+import { ErrorToast } from '@/components/ui/ErrorToast'
 import { useCanvasStore } from '@/lib/store'
 import type { Profile } from '@/lib/auth-context'
 
@@ -71,24 +72,8 @@ export function PublicProfileClient({ profile }: { profile: Profile }) {
       <Canvas3D />
       <FilterButton />
       <PublicBanner />
-        
-      {/* Loading overlay for the 3D canvas */}
-      {loading && (
-        <div style={{
-          position: 'absolute', inset: 0, zIndex: 100,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: profile.bg_color || '#ede8de',
-        }}>
-          <div style={{
-            width: '24px', height: '24px',
-            border: '2.5px solid rgba(0,0,0,0.15)',
-            borderTopColor: 'rgba(0,0,0,0.7)',
-            borderRadius: '50%',
-            animation: 'spin 0.7s linear infinite',
-          }} />
-          <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
-        </div>
-      )}
+      <ErrorToast />
+
     </main>
   )
 }

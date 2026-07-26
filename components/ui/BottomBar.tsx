@@ -181,9 +181,17 @@ export function BottomBar() {
   // All unique tags already in the canvas
   const existingTags = Array.from(new Set(nodes.flatMap((n) => n.tags))).sort()
 
-  // Compress images > 2 MB before upload (critical for mobile camera photos)
+  // Downscale oversized images before upload.
+  //
+  // This used to trigger on file size (> 2 MB), which let a 1.9 MB phone photo
+  // through untouched at 4032×3024 — about 48 MB of GPU texture memory for a
+  // single image, and the main reason a busy canvas crashed on mobile. The
+  // deciding factor is pixel dimensions, not bytes, so that is what we check.
+  const MAX_UPLOAD_W = 1600
+
   const compressImage = (file: File): Promise<File> => {
-    if (!file.type.startsWith('image/') || file.size < 2 * 1024 * 1024) {
+    // Animated GIFs lose their animation through a canvas, and SVGs are already tiny
+    if (!file.type.startsWith('image/') || file.type === 'image/gif' || file.type === 'image/svg+xml') {
       return Promise.resolve(file)
     }
     return new Promise((resolve) => {
@@ -191,17 +199,22 @@ export function BottomBar() {
       const objUrl = URL.createObjectURL(file)
       img.onload = () => {
         URL.revokeObjectURL(objUrl)
-        const MAX_W = 1920
         let { width, height } = img
-        if (width > MAX_W) { height = Math.round(height * MAX_W / width); width = MAX_W }
+
+        // Already small in both dimensions and bytes — re-encoding would only lose quality
+        if (width <= MAX_UPLOAD_W && file.size < 1024 * 1024) { resolve(file); return }
+
+        if (width > MAX_UPLOAD_W) { height = Math.round(height * MAX_UPLOAD_W / width); width = MAX_UPLOAD_W }
         const canvas = document.createElement('canvas')
         canvas.width = width; canvas.height = height
         const ctx = canvas.getContext('2d')
         if (!ctx) { resolve(file); return }
+        ctx.imageSmoothingQuality = 'high'
         ctx.drawImage(img, 0, 0, width, height)
         canvas.toBlob(
           (blob) => {
-            if (!blob) { resolve(file); return }
+            // Keep whichever is smaller — re-encoding can inflate an already-optimised file
+            if (!blob || blob.size >= file.size) { resolve(file); return }
             resolve(new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' }))
           },
           'image/jpeg', 0.85
@@ -343,11 +356,30 @@ export function BottomBar() {
 
       } else if (activeType === 'image' && (imageUrl || imageFilesState.length > 0)) {
         if (imageFilesState.length > 0) {
-          for (const file of imageFilesState) {
-            let finalUrl = ''
-            try { finalUrl = await uploadMedia(file) } catch (err) { finalUrl = URL.createObjectURL(file) }
+          // No blob: fallback on upload failure. A blob URL is only valid for the
+          // current page load, and loadFromSupabase drops those rows, so saving one
+          // made the image vanish on reload. Keep failures queued for a retry instead.
+          const failed: number[] = []
+          for (let i = 0; i < imageFilesState.length; i++) {
+            const file = imageFilesState[i]
+            let finalUrl: string
+            try {
+              finalUrl = await uploadMedia(file)
+            } catch (err) {
+              console.error('Image upload failed:', file.name, err)
+              failed.push(i)
+              continue
+            }
             await addNode({ type: 'image', content: finalUrl, title: file.name, caption: imageCaption || undefined, date: imageDate || undefined, tags: tagList, seed: Math.random() })
           }
+          if (failed.length > 0) {
+            imagePreviews.forEach((url, i) => { if (!failed.includes(i)) URL.revokeObjectURL(url) })
+            setImageFilesState(imageFilesState.filter((_, i) => failed.includes(i)))
+            setImagePreviews(imagePreviews.filter((_, i) => failed.includes(i)))
+            alert(`No se pudieron subir ${failed.length} de ${imageFilesState.length} imágenes. Quedaron en la lista para reintentar.`)
+            return
+          }
+          imagePreviews.forEach((url) => URL.revokeObjectURL(url))
         } else if (imageUrl) {
           await addNode({ type: 'image', content: imageUrl, title: imageName || 'Image', caption: imageCaption || undefined, date: imageDate || undefined, tags: tagList, seed: Math.random() })
         }
@@ -359,10 +391,24 @@ export function BottomBar() {
 
       } else if (activeType === 'video' && (videoUrl || videoFilesState.length > 0)) {
         if (videoFilesState.length > 0) {
+          // Same as images: never persist a blob: URL, it won't survive a reload.
+          const failed: File[] = []
           for (const file of videoFilesState) {
-            let finalUrl = ''
-            try { finalUrl = await uploadMedia(file) } catch (err) { finalUrl = URL.createObjectURL(file) }
+            let finalUrl: string
+            try {
+              finalUrl = await uploadMedia(file)
+            } catch (err) {
+              console.error('Video upload failed:', file.name, err)
+              failed.push(file)
+              continue
+            }
             await addNode({ type: 'video', content: finalUrl, title: file.name, caption: videoCaption || undefined, date: videoDate || undefined, tags: tagList, seed: Math.random() })
+          }
+          if (failed.length > 0) {
+            setVideoFilesState(failed)
+            setVideoFileName(failed.length > 1 ? `${failed.length} videos` : failed[0].name)
+            alert(`No se pudieron subir ${failed.length} de ${videoFilesState.length} videos. Quedaron en la lista para reintentar.`)
+            return
           }
         } else if (videoUrl) {
           await addNode({ type: 'video', content: videoUrl, title: videoTitle || 'Video', caption: videoCaption || undefined, date: videoDate || undefined, tags: tagList, seed: Math.random() })

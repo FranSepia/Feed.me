@@ -2,11 +2,12 @@
 
 import { useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
-import { useTexture, Html } from '@react-three/drei'
+import { Html } from '@react-three/drei'
 import { useSpring, animated } from '@react-spring/three'
 import * as THREE from 'three'
 import { NodeData, useCanvasStore } from '@/lib/store'
 import { isLightBg } from '@/lib/colors'
+import { useNodeTexture } from '@/lib/useNodeTexture'
 
 function formatDate(dateStr: string): string {
   const [year, month, day] = dateStr.split('-').map(Number)
@@ -39,7 +40,7 @@ export function ImageNode({ node, isSelected, isDimmed, isOrbit, targetPosition 
   const meshRef = useRef<THREE.Mesh>(null)
   const { camera } = useThree()
 
-  const texture = useTexture(node.content)
+  const texture = useNodeTexture(node.content)
   const aspect = texture.image ? texture.image.width / texture.image.height : 1
   const w = 3 * aspect
   const h = 3
