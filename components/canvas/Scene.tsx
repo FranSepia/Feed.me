@@ -42,8 +42,16 @@ function seededRandom(seed: number) {
   return x - Math.floor(x)
 }
 
-// Orbit layout when a node is selected — random every click, no overlaps.
-// Uses Math.random() so each tap/click gives a fresh arrangement.
+// Orbit layout when a node is selected.
+//
+// This used to be rejection sampling: pick a random point, keep it if it clears
+// every card already placed, otherwise keep the "least bad" one after 200 tries.
+// That degrades badly as the ring fills — valid spots become rare, so most later
+// cards land on the fallback, which is what produced the clumps and the empty
+// patches. It also sampled a rectangle rather than the oval the loose layout uses.
+//
+// Phyllotaxis over an annulus places cards by equal area instead, so even spacing
+// is a property of the formula rather than something we hope sampling finds.
 function computeOrbitPositions(
   nodes: NodeData[],
   selectedId: string | null
@@ -55,7 +63,8 @@ function computeOrbitPositions(
   const others = nodes.filter((n) => n.id !== selectedId)
   const result: Record<string, [number, number, number]> = {}
   result[selectedId] = sel.position
-  
+  if (others.length === 0) return result
+
   const selTags = sel.tags || []
 
   const aspect = typeof window !== 'undefined' ? window.innerWidth / window.innerHeight : 1.6
@@ -63,52 +72,70 @@ function computeOrbitPositions(
   const zoomD  = isMobile ? 16 : 14
   const fovV   = isMobile ? 65 : 60
   // Visible half-extents at the selected node's depth (camera sits zoomD units away)
-  const halfH  = zoomD * Math.tan((fovV / 2) * Math.PI / 180) * 0.82
+  const halfH  = zoomD * Math.tan((fovV / 2) * Math.PI / 180)
   const halfW  = halfH * aspect
 
-  // selExclude = half selected image height (1.75×3=5.25, half=2.625)
-  //            + half orbit image height (0.82×3=2.46 desktop, 0.55×3=1.65 mobile, halved)
-  // → ensures no image touches the selected one in screen space
-  const selExclude = isMobile ? 3.8 : 4.2
-  // minDist: smaller value lets more nodes pack in, reducing empty gaps
-  const minDist    = isMobile ? 2.8 : 3.2
+  // Card half-sizes. The orbit scale here mirrors ImageNode's orbitBase, and the
+  // width factors allow for the widest aspect ratios in a typical canvas.
+  const orbitScale = isMobile ? 0.44 : 0.66
+  const cardHalfH  = (3 * orbitScale) / 2
+  const cardHalfW  = cardHalfH * 1.6
+  const selHalfH   = (3 * 1.75) / 2
+  const selHalfW   = selHalfH * 1.4
 
-  // placed[0] = selected node at relative origin (screen centre after camera zoom)
-  const placed: [number, number][] = [[0, 0]]
+  // Inset by a card so nothing is half off the edge, then grow with the canvas so
+  // density stays constant — the same reason the loose layout scales, which is why
+  // that one reads as evenly spread.
+  const idealCount = isMobile ? 20 : 32
+  const spread = Math.max(1, Math.sqrt(others.length / idealCount))
+  const Rx = Math.max(1, halfW - cardHalfW) * spread
+  const Ry = Math.max(1, halfH - cardHalfH) * spread
 
-  others.forEach((node) => {
-    let bx = 0, by = 0, bestDist = -1
+  // Radius of the hole left for the selected card, sized independently on each
+  // axis because a selected image is much wider than it is tall
+  const rInner = Math.min(0.62, Math.max(
+    (selHalfW + cardHalfW) / Rx,
+    (selHalfH + cardHalfH) / Ry,
+    0.18
+  ))
 
-    for (let a = 0; a < 200; a++) {
-      const cx = (Math.random() * 2 - 1) * halfW
-      const cy = (Math.random() * 2 - 1) * halfH
+  // Related tags take the inner rings, unrelated get pushed to the outside. The
+  // old code multiplied unrelated positions by 2.2 after placement, which threw
+  // away the spacing it had just computed — related cards bunched in the middle
+  // while unrelated ones scattered and left gaps.
+  const related: NodeData[] = []
+  const unrelated: NodeData[] = []
+  for (const n of others) {
+    const isUn = selTags.length > 0 && !n.tags.some((t) => selTags.includes(t))
+    ;(isUn ? unrelated : related).push(n)
+  }
+  const ordered = [...related, ...unrelated]
 
-      let ok = true
-      let worstGap = Infinity
-      for (let pi = 0; pi < placed.length; pi++) {
-        const [px, py] = placed[pi]
-        const d = Math.sqrt((cx - px) ** 2 + (cy - py) ** 2)
-        const threshold = pi === 0 ? selExclude : minDist
-        const gap = d - threshold
-        if (gap < 0) { ok = false; worstGap = Math.min(worstGap, gap); break }
-        worstGap = Math.min(worstGap, gap)
-      }
+  const golden = Math.PI * (3 - Math.sqrt(5))
+  const inner2 = rInner * rInner
+  const total  = ordered.length
 
-      if (ok) { bx = cx; by = cy; break }
-      if (worstGap > bestDist) { bestDist = worstGap; bx = cx; by = cy }
-    }
+  ordered.forEach((node, i) => {
+    // sqrt spacing distributes by area, so rings do not crowd toward the centre
+    const t = (i + 0.5) / total
+    const r = Math.sqrt(inner2 + t * (1 - inner2))
+    const angle = i * golden
 
-    placed.push([bx, by])
-    
-    const isUnrelated = selTags.length > 0 && !node.tags.some(t => selTags.includes(t))
-    const spreadMultiplier = isUnrelated ? 2.2 : 1.0
-    const zOffset = isUnrelated ? -28 - (Math.random() * 10) : (Math.random() * 2 - 1) * 4.0
-    
-    // Orbit nodes at same depth plane as selected; tiny z jitter avoids z-fighting.
-    // They render below the selected node because Scene sorts selected last.
+    // Seeded, so a re-render does not reshuffle the arrangement mid-animation
+    const jx = (seededRandom(node.seed * 3 + 7) - 0.5) * Rx * 0.09
+    const jy = (seededRandom(node.seed * 5 + 2) - 0.5) * Ry * 0.09
+
+    // Every orbit card sits behind the selected one. They used to be offset by
+    // ±4, so about half of them rendered in front and covered the card you had
+    // just tapped.
+    const isUn = i >= related.length
+    const zOffset = isUn
+      ? -24 - seededRandom(node.seed + 3) * 10
+      : -1.5 - seededRandom(node.seed + 1) * 3
+
     result[node.id] = [
-      sel.position[0] + bx * spreadMultiplier,
-      sel.position[1] + by * spreadMultiplier,
+      sel.position[0] + Math.cos(angle) * Rx * r + jx,
+      sel.position[1] + Math.sin(angle) * Ry * r + jy,
       sel.position[2] + zOffset,
     ]
   })
@@ -157,12 +184,12 @@ export function Scene() {
 
   const filterActive = filterTags.length > 0
 
-  // Re-randomize only when the selected node ID changes — not on every render.
-  // This gives a fresh random scatter each time a node is tapped/clicked.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // Now that the arrangement is seeded rather than random, `nodes` can be a real
+  // dependency: recomputing gives the same result, so positions stay correct when
+  // a node is added or removed while something is selected.
   const orbitPositions = useMemo(
     () => computeOrbitPositions(nodes, selectedNode),
-    [selectedNode]
+    [nodes, selectedNode]
   )
 
   const perimeterPositions = useMemo(
