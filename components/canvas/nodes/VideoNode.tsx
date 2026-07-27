@@ -22,6 +22,8 @@ function getYouTubeId(url: string): string | null {
   return null
 }
 
+const isMobile = typeof window !== 'undefined' && window.innerWidth < 600
+
 function formatDate(dateStr: string): string {
   const [year, month, day] = dateStr.split('-').map(Number)
   return new Date(year, month - 1, day).toLocaleDateString('es-MX', {
@@ -60,6 +62,9 @@ export function VideoNode({ node, isSelected, isDimmed, isOrbit, targetPosition,
   // autoPlay = a related-tag node is selected (but not this one), same logic as orbit,
   // and Scene has granted this node one of the limited autoplay slots
   const autoPlay = canAutoPlay && !isSelected && !isDimmed && selectedNodeId !== null
+
+  // Desktop can afford an idle <video> per card for its poster frame; phones cannot
+  const mountVideo = !isMobile || isSelected || autoPlay
 
   const captionClr = light ? 'rgba(0,0,0,0.75)'  : 'rgba(255,255,255,0.88)'
   const dateClr    = light ? 'rgba(0,0,0,0.45)'  : 'rgba(255,255,255,0.5)'
@@ -227,20 +232,27 @@ export function VideoNode({ node, isSelected, isDimmed, isOrbit, targetPosition,
               position: 'relative',
               boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
             }}>
-              <video
-                ref={videoRef}
-                src={`${node.content}#t=0.001`}
-                style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                preload="metadata"
-                playsInline
-                loop
-                onLoadedMetadata={(e) => {
-                  const v = e.currentTarget
-                  if (v.videoWidth && v.videoHeight) {
-                    setVideoAspect(v.videoWidth / v.videoHeight)
-                  }
-                }}
-              />
+              {/* On phones the element is mounted only while it is actually wanted.
+                  iOS caps how many media decoders exist at once, and a canvas that
+                  mounted one <video preload="metadata"> per node blew past that
+                  limit and took the page down. Idle cards show the poster frame
+                  below instead. */}
+              {mountVideo && (
+                <video
+                  ref={videoRef}
+                  src={`${node.content}#t=0.001`}
+                  style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                  preload="metadata"
+                  playsInline
+                  loop
+                  onLoadedMetadata={(e) => {
+                    const v = e.currentTarget
+                    if (v.videoWidth && v.videoHeight) {
+                      setVideoAspect(v.videoWidth / v.videoHeight)
+                    }
+                  }}
+                />
+              )}
               {!isSelected && !autoPlay && (
                 <>
                   <div style={{

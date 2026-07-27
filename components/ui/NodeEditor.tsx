@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useCanvasStore } from '@/lib/store'
 import { useResponsive } from '@/lib/useResponsive'
+import { SaveButton } from './SaveButton'
 
 export function NodeEditor() {
   const selectedNode = useCanvasStore((s) => s.selectedNode)
@@ -71,6 +72,10 @@ export function NodeEditor() {
       borderRadius: '24px',
       padding: '24px',
       width: isMobile ? 'calc(100vw - 32px)' : '360px',
+      // Anchored to the bottom, so without a ceiling a tag-heavy node pushes its
+      // own fields off the top of a phone screen with no way to reach them
+      maxHeight: isMobile ? 'calc(100vh - 120px)' : 'calc(100vh - 140px)',
+      overflowY: 'auto',
       backdropFilter: 'blur(32px)',
       WebkitBackdropFilter: 'blur(32px)',
       boxShadow: '0 12px 40px rgba(0,0,0,0.15), inset 0 1px 0 rgba(255,255,255,0.95)',
@@ -162,28 +167,21 @@ export function NodeEditor() {
         )}
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '12px' }}>
-        <button 
+      <div style={{
+        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        gap: '10px', marginTop: '12px', flexShrink: 0,
+      }}>
+        <button
           onClick={handleDelete}
-          style={{ 
-            background: 'rgba(255,100,100,0.1)', border: '1px solid rgba(255,100,100,0.3)', 
-            color: 'rgba(200,50,50,0.9)', padding: '8px 16px', borderRadius: '12px', 
-            fontSize: '13px', fontWeight: 600, cursor: 'pointer',
+          style={{
+            background: 'rgba(255,100,100,0.1)', border: '1px solid rgba(255,100,100,0.3)',
+            color: 'rgba(200,50,50,0.9)', padding: '9px 18px', borderRadius: '50px',
+            fontSize: '13px', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
           }}
         >
-          Delete
+          Eliminar
         </button>
-        <button 
-          onClick={handleSave}
-          style={{ 
-            background: 'linear-gradient(135deg, rgba(80,100,250,0.9), rgba(50,70,220,0.9))', 
-            border: '1px solid rgba(255,255,255,0.2)', color: 'white', 
-            padding: '8px 24px', borderRadius: '12px', fontSize: '14px', 
-            fontWeight: 600, cursor: 'pointer', boxShadow: '0 4px 12px rgba(50,70,220,0.3)',
-          }}
-        >
-          {saving ? 'Saving...' : 'Save'}
-        </button>
+        <SaveButton onClick={handleSave} saving={saving} />
       </div>
     </div>
   )

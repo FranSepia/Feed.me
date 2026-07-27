@@ -9,6 +9,14 @@ import { NodeData, useCanvasStore } from '@/lib/store'
 import { isLightBg } from '@/lib/colors'
 import { useNodeTexture } from '@/lib/useNodeTexture'
 
+const isMobile = typeof window !== 'undefined' && window.innerWidth < 600
+
+// Each <Html> overlay is a real DOM node whose transform drei recomputes every
+// frame. A phone showing one caption per image on a busy canvas spends more time
+// in layout than in rendering, so past this many nodes only the selected card
+// keeps its caption.
+const MOBILE_CAPTION_LIMIT = 20
+
 function formatDate(dateStr: string): string {
   const [year, month, day] = dateStr.split('-').map(Number)
   return new Date(year, month - 1, day).toLocaleDateString('es-MX', {
@@ -29,7 +37,10 @@ export function ImageNode({ node, isSelected, isDimmed, isOrbit, targetPosition 
   const removeNode = useCanvasStore((s) => s.removeNode)
   const editMode = useCanvasStore((s) => s.editMode)
   const bgColor = useCanvasStore((s) => s.bgColor)
+  const nodeCount = useCanvasStore((s) => s.nodes.length)
   const [hovered, setHovered] = useState(false)
+
+  const showCaption = isSelected || !isMobile || nodeCount <= MOBILE_CAPTION_LIMIT
 
   const light = isLightBg(bgColor)
   const tagBg      = light ? 'rgba(255,255,255,0.75)' : 'rgba(20,20,20,0.65)'
@@ -125,7 +136,7 @@ export function ImageNode({ node, isSelected, isDimmed, isOrbit, targetPosition 
       )}
 
       {/* Caption — below image, floating, full image width, left edge anchor */}
-      {(node.caption || node.date) && (
+      {(node.caption || node.date) && showCaption && (
         <Html
           distanceFactor={10}
           position={[-0.5, -0.515, 0.01]}

@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import { supabase } from './supabase'
+import { configureTextureBudget } from './useNodeTexture'
 
 export interface NodeData {
   id: string
@@ -471,6 +472,9 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
           const newPositions = layoutPositions(loaded.length)
           loaded.forEach((n, i) => { n.position = newPositions[i] })
         }
+
+        // Size the GPU texture cap to the canvas before any node renders
+        configureTextureBudget(loaded.filter((n) => n.type === 'image').length)
 
         set({ nodes: [...loaded, ...socialNodes], socials, nodesLoaded: true })
       } else {

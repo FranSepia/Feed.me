@@ -6,6 +6,7 @@ import { useResponsive } from '@/lib/useResponsive'
 import { useAuth } from '@/lib/auth-context'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
+import { SaveButton } from './SaveButton'
 
 const PRESET_COLORS = [
   { hex: '#ede8de', label: 'Beige' },
@@ -301,47 +302,32 @@ export function ProfilePanel() {
                 />
               </div>
             ))}
-            <button
-              onClick={async () => {
-                setSocialsSaving(true)
-                setSocialsError(null)
-                try {
-                  // 9-second safety net — if setSocials hangs beyond its own 8s
-                  // AbortController (e.g. localStorage read blocks), this unblocks the UI
-                  const timeout = new Promise<never>((_, reject) =>
-                    setTimeout(() => reject(new Error('Tiempo de espera agotado — verifica tu conexión')), 9000)
-                  )
-                  await Promise.race([setSocials(localSocials), timeout])
-                  setSocialsSaved(true)
-                  setTimeout(() => setSocialsSaved(false), 2500)
-                } catch (e: unknown) {
-                  setSocialsError(e instanceof Error ? e.message : 'Error al guardar')
-                } finally {
-                  setSocialsSaving(false)
-                }
-              }}
-              disabled={socialsSaving}
-              style={{
-                marginTop: '4px',
-                padding: '10px',
-                borderRadius: '50px',
-                border: 'none',
-                background: socialsError
-                  ? 'rgba(220,50,50,0.12)'
-                  : socialsSaved
-                  ? 'rgba(60,180,100,0.15)'
-                  : 'rgba(50,54,78,0.08)',
-                color: socialsError
-                  ? 'rgba(200,50,50,0.9)'
-                  : socialsSaved ? 'rgba(40,140,80,0.9)' : 'rgba(50,54,78,0.7)',
-                fontSize: '13px',
-                fontWeight: 600,
-                cursor: socialsSaving ? 'not-allowed' : 'pointer',
-                transition: 'all 0.2s',
-              }}
-            >
-              {socialsSaving ? 'Guardando…' : socialsError ? `✕ ${socialsError}` : socialsSaved ? '✓ Guardado' : 'Guardar'}
-            </button>
+            <div style={{ marginTop: '4px' }}>
+              <SaveButton
+                fullWidth
+                saving={socialsSaving}
+                saved={socialsSaved}
+                error={socialsError}
+                onClick={async () => {
+                  setSocialsSaving(true)
+                  setSocialsError(null)
+                  try {
+                    // 9-second safety net — if setSocials hangs beyond its own 8s
+                    // AbortController (e.g. localStorage read blocks), this unblocks the UI
+                    const timeout = new Promise<never>((_, reject) =>
+                      setTimeout(() => reject(new Error('Tiempo de espera agotado — verifica tu conexión')), 9000)
+                    )
+                    await Promise.race([setSocials(localSocials), timeout])
+                    setSocialsSaved(true)
+                    setTimeout(() => setSocialsSaved(false), 2500)
+                  } catch (e: unknown) {
+                    setSocialsError(e instanceof Error ? e.message : 'Error al guardar')
+                  } finally {
+                    setSocialsSaving(false)
+                  }
+                }}
+              />
+            </div>
           </div>
         )}
       </div>

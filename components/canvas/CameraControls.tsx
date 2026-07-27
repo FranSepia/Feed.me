@@ -21,6 +21,17 @@ const ZOOM_DIST_MOBILE: Record<string, number> = {
   social: 10,
 }
 
+// Zoom is multiplicative, not additive: each gesture scales the remaining distance
+// to this floor rather than adding a fixed number of world units. Far away the
+// same finger travel covers a lot of ground, and the closer you get the finer it
+// becomes — so you can no longer shoot straight past an image while pinching.
+const ZOOM_FLOOR = -12
+
+function applyZoom(z: number, factor: number, min: number, max: number): number {
+  const scaled = ZOOM_FLOOR + (z - ZOOM_FLOOR) * factor
+  return THREE.MathUtils.clamp(scaled, min, max)
+}
+
 export function CameraControls() {
   const { camera, gl } = useThree()
   const isDragging = useRef(false)
@@ -67,10 +78,17 @@ export function CameraControls() {
     const canvas = gl.domElement
     const maxZ = isMobile ? 60 : 50
 
+    // How much world space a screen pixel covers depends on how far back the
+    // camera sits, so panning has to scale with it too — otherwise a drag that
+    // feels right zoomed out sends the canvas flying when you are up close.
+    const panSpan = initZ - ZOOM_FLOOR
+    const panFactor = () =>
+      Math.max(0.3, (currentPosition.current.z - ZOOM_FLOOR) / panSpan)
+
     const onWheel = (e: WheelEvent) => {
       e.preventDefault()
-      const delta = e.deltaY * 0.05
-      targetPosition.current.z = THREE.MathUtils.clamp(targetPosition.current.z + delta, -10, maxZ)
+      const factor = Math.exp(e.deltaY * 0.0016)
+      targetPosition.current.z = applyZoom(targetPosition.current.z, factor, -10, maxZ)
       freeTarget.current.z = targetPosition.current.z
     }
 
@@ -83,8 +101,9 @@ export function CameraControls() {
 
     const onMouseMove = (e: MouseEvent) => {
       if (!isDragging.current) return
-      const dx = (e.clientX - lastMouse.current.x) * 0.02
-      const dy = (e.clientY - lastMouse.current.y) * 0.02
+      const p = panFactor()
+      const dx = (e.clientX - lastMouse.current.x) * 0.02 * p
+      const dy = (e.clientY - lastMouse.current.y) * 0.02 * p
       targetPosition.current.x -= dx
       targetPosition.current.y += dy
       // Keep freeTarget in sync so deselecting leaves camera at current position
@@ -116,9 +135,12 @@ export function CameraControls() {
         const dx = e.touches[0].clientX - e.touches[1].clientX
         const dy = e.touches[0].clientY - e.touches[1].clientY
         const dist = Math.sqrt(dx * dx + dy * dy)
-        if (lastPinchDist.current !== null) {
-          const delta = (lastPinchDist.current - dist) * 0.18
-          freeTarget.current.z = THREE.MathUtils.clamp(freeTarget.current.z + delta, -10, maxZ)
+        if (lastPinchDist.current !== null && dist > 0 && lastPinchDist.current > 0) {
+          // The ratio between finger spreads is already scale-relative, which is
+          // what makes this ease off as you approach. The exponent just softens
+          // how hard a given pinch bites.
+          const ratio = Math.pow(lastPinchDist.current / dist, 0.85)
+          freeTarget.current.z = applyZoom(freeTarget.current.z, ratio, -10, maxZ)
           targetPosition.current.z = freeTarget.current.z
         }
         lastPinchDist.current = dist
@@ -126,8 +148,9 @@ export function CameraControls() {
       }
 
       if (!isDragging.current || e.touches.length !== 1) return
-      const dx = (e.touches[0].clientX - lastMouse.current.x) * 0.06
-      const dy = (e.touches[0].clientY - lastMouse.current.y) * 0.06
+      const p = panFactor()
+      const dx = (e.touches[0].clientX - lastMouse.current.x) * 0.06 * p
+      const dy = (e.touches[0].clientY - lastMouse.current.y) * 0.06 * p
       targetPosition.current.x -= dx
       targetPosition.current.y += dy
       freeTarget.current.x = targetPosition.current.x
