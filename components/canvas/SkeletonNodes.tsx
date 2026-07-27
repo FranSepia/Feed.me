@@ -11,12 +11,15 @@ interface SkeletonItemProps {
   index: number
   aspect: number
   light: boolean
+  /** Once the real images are ready, fade out instead of popping */
+  fading: boolean
 }
 
-function SkeletonItem({ position, index, aspect, light }: SkeletonItemProps) {
+function SkeletonItem({ position, index, aspect, light, fading }: SkeletonItemProps) {
   const meshRef = useRef<THREE.Mesh>(null)
   const matRef = useRef<THREE.MeshBasicMaterial>(null)
-  const glowRef = useRef<THREE.MeshBasicMaterial>(null)
+  // Attached to the border's <lineBasicMaterial>, not a mesh material
+  const glowRef = useRef<THREE.LineBasicMaterial>(null)
 
   const w = 3 * aspect
   const h = 3
@@ -29,10 +32,17 @@ function SkeletonItem({ position, index, aspect, light }: SkeletonItemProps) {
     new THREE.Color(light ? '#1a1a1a' : '#e0e0e0'), [light])
   const tempColor = useMemo(() => new THREE.Color(), [])
 
-  useFrame((state) => {
+  // 1 while loading, eased toward 0 once the images are on their way in
+  const fadeRef = useRef(1)
+
+  useFrame((state, delta) => {
     const t = state.clock.getElapsedTime()
 
     if (!meshRef.current || !matRef.current) return
+
+    const target = fading ? 0 : 1
+    fadeRef.current += (target - fadeRef.current) * Math.min(1, delta * 3.5)
+    const fade = fadeRef.current
 
     // Billboard: always face the camera
     meshRef.current.quaternion.copy(state.camera.quaternion)
@@ -46,12 +56,12 @@ function SkeletonItem({ position, index, aspect, light }: SkeletonItemProps) {
     matRef.current.color.copy(tempColor)
 
     // Also pulse opacity strongly  0.18 ↔ 0.72
-    matRef.current.opacity = 0.18 + wave * 0.54
+    matRef.current.opacity = (0.18 + wave * 0.54) * fade
 
     // Glow outline pulses in opposite phase so it flashes when fill is dim
     if (glowRef.current) {
       const inv = 1 - wave
-      glowRef.current.opacity = 0.15 + inv * 0.65
+      glowRef.current.opacity = (0.15 + inv * 0.65) * fade
     }
 
     // Gentle float
@@ -98,12 +108,13 @@ function SkeletonItem({ position, index, aspect, light }: SkeletonItemProps) {
   )
 }
 
-export function SkeletonNodes() {
+const SKELETON_COUNT = 10
+
+export function SkeletonNodes({ fading = false }: { fading?: boolean }) {
   const bgColor = useCanvasStore((s) => s.bgColor)
   const light = isLightBg(bgColor)
 
-  const count = 10
-  const positions = useMemo(() => generatePositions(count), [])
+  const positions = useMemo(() => generatePositions(SKELETON_COUNT), [])
 
   const aspects = [1.33, 1.0, 1.4, 0.85, 1.25, 1.5, 0.9, 1.2, 1.33, 1.1]
 
@@ -116,6 +127,7 @@ export function SkeletonNodes() {
           index={i}
           aspect={aspects[i % aspects.length]}
           light={light}
+          fading={fading}
         />
       ))}
     </group>

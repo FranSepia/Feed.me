@@ -35,9 +35,11 @@ interface Props {
   isDimmed: boolean
   isOrbit: boolean
   targetPosition: [number, number, number]
+  /** Scene grants a limited number of autoplay slots so phones don't choke */
+  canAutoPlay?: boolean
 }
 
-export function VideoNode({ node, isSelected, isDimmed, isOrbit, targetPosition }: Props) {
+export function VideoNode({ node, isSelected, isDimmed, isOrbit, targetPosition, canAutoPlay = false }: Props) {
   const setSelectedNode = useCanvasStore((s) => s.setSelectedNode)
   const setPlayingVideoUrl = useCanvasStore((s) => s.setPlayingVideoUrl)
   const removeNode = useCanvasStore((s) => s.removeNode)
@@ -55,8 +57,9 @@ export function VideoNode({ node, isSelected, isDimmed, isOrbit, targetPosition 
   const meshRef = useRef<THREE.Mesh>(null)
   const { camera } = useThree()
 
-  // autoPlay = a related-tag node is selected (but not this one), same logic as orbit
-  const autoPlay = !isSelected && !isDimmed && selectedNodeId !== null
+  // autoPlay = a related-tag node is selected (but not this one), same logic as orbit,
+  // and Scene has granted this node one of the limited autoplay slots
+  const autoPlay = canAutoPlay && !isSelected && !isDimmed && selectedNodeId !== null
 
   const captionClr = light ? 'rgba(0,0,0,0.75)'  : 'rgba(255,255,255,0.88)'
   const dateClr    = light ? 'rgba(0,0,0,0.45)'  : 'rgba(255,255,255,0.5)'

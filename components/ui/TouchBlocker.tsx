@@ -9,10 +9,12 @@ export function TouchBlocker() {
       e.preventDefault()
     }
     
-    // Fallback: prevent native scaling when two fingers are touching the screen and moving
+    // Fallback: prevent native scaling when two fingers are touching the screen and moving.
+    // `scale` is a non-standard WebKit addition to TouchEvent, so it isn't in the DOM types.
     const handleTouchMove = (e: TouchEvent) => {
       // If we are pinching (2 or more fingers) and the target isn't an explicit scrollable container
-      if (e.scale !== undefined && e.scale !== 1) {
+      const scale = (e as TouchEvent & { scale?: number }).scale
+      if (scale !== undefined && scale !== 1) {
         e.preventDefault();
       }
     }
