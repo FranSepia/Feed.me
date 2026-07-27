@@ -7,6 +7,7 @@ import { useSpring, animated } from '@react-spring/three'
 import * as THREE from 'three'
 import { NodeData, useCanvasStore } from '@/lib/store'
 import { isLightBg } from '@/lib/colors'
+import { useVideoPoster } from '@/lib/useVideoPoster'
 
 function getYouTubeId(url: string): string | null {
   const patterns = [
@@ -72,6 +73,10 @@ export function VideoNode({ node, isSelected, isDimmed, isOrbit, targetPosition,
   // the play-button card until they are tapped.
   const mountVideo = !isMobile || canPreview || isSelected || autoPlay
   const showPlayOverlay = !mountVideo || !inlinePlaying
+
+  // Cards without a live element get a captured first frame instead of grey.
+  // YouTube nodes already have a real thumbnail from img.youtube.com.
+  const poster = useVideoPoster(node.content, !isYT && !mountVideo)
 
   const captionClr = light ? 'rgba(0,0,0,0.75)'  : 'rgba(255,255,255,0.88)'
   const dateClr    = light ? 'rgba(0,0,0,0.45)'  : 'rgba(255,255,255,0.5)'
@@ -242,8 +247,22 @@ export function VideoNode({ node, isSelected, isDimmed, isOrbit, targetPosition,
               {/* On phones the element is mounted only while it is actually wanted.
                   iOS caps how many media decoders exist at once, and a canvas that
                   mounted one <video preload="metadata"> per node blew past that
-                  limit and took the page down. Idle cards show the poster frame
-                  below instead. */}
+                  limit and took the page down. */}
+              {!mountVideo && poster && (
+                <img
+                  src={poster}
+                  alt=""
+                  // The capture keeps the video's proportions, so this is also how
+                  // an unmounted card learns its real shape instead of assuming 16:9
+                  onLoad={(e) => {
+                    const img = e.currentTarget
+                    if (img.naturalWidth && img.naturalHeight) {
+                      setVideoAspect(img.naturalWidth / img.naturalHeight)
+                    }
+                  }}
+                  style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                />
+              )}
               {mountVideo && (
                 <video
                   ref={videoRef}
