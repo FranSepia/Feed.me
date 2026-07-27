@@ -1,3 +1,6 @@
+'use client'
+
+import { useEffect, useState } from 'react'
 import * as THREE from 'three'
 
 // Suspense-backed texture loader that downscales before handing the image to the GPU.
@@ -14,16 +17,24 @@ import * as THREE from 'three'
 
 const isMobile = typeof window !== 'undefined' && window.innerWidth < 600
 
-// Adaptive budget. A phone survives 15 images at 768 px but not 60, so the cap
-// scales down as the canvas gets busier — a crowded board is viewed zoomed out
-// anyway, where the extra detail is invisible.
-let maxTextureSize = isMobile ? 768 : 1280
+// Adaptive budget for the wide view. Still scales with how busy the canvas is,
+// but the floor is far higher than it was — the earlier 384 px cap kept memory
+// safe at a visible cost in sharpness, and quality is the priority.
+//
+// Whatever this leaves on the table is recovered by HIGH_RES_SIZE below: the
+// image you actually look at closely is reloaded at full detail.
+let maxTextureSize = isMobile ? 1024 : 1600
 
 export function configureTextureBudget(imageCount: number): void {
   maxTextureSize = isMobile
-    ? imageCount > 40 ? 384 : imageCount > 20 ? 512 : 768
-    : imageCount > 60 ? 768 : 1280
+    ? imageCount > 50 ? 640 : imageCount > 25 ? 800 : 1024
+    : imageCount > 60 ? 1200 : 1600
 }
+
+// Resolution for the selected node. Only a couple of these exist at any moment,
+// so they can be generous without threatening the memory ceiling.
+const HIGH_RES_SIZE = isMobile ? 1600 : 2400
+const HIGH_RES_CACHE_LIMIT = 3
 
 // Decoding a full canvas of images at once produces a memory spike large enough
 // to lose the WebGL context on mobile, even though each finished texture is small.
@@ -82,7 +93,18 @@ function makePlaceholder(): THREE.Texture {
   return new THREE.CanvasTexture(canvas)
 }
 
-function decode(url: string): Promise<THREE.Texture> {
+// Sharpens the minified case, which is most of the canvas most of the time.
+// three clamps this to whatever the GPU actually supports when it uploads.
+function tune(texture: THREE.Texture): THREE.Texture {
+  texture.anisotropy = 4
+  texture.minFilter = THREE.LinearMipmapLinearFilter
+  texture.magFilter = THREE.LinearFilter
+  texture.generateMipmaps = true
+  texture.needsUpdate = true
+  return texture
+}
+
+function decode(url: string, size: number): Promise<THREE.Texture> {
   return new Promise((resolve) => {
     const img = new Image()
     // Matches THREE.TextureLoader's default; required to draw into a canvas untainted
@@ -100,13 +122,11 @@ function decode(url: string): Promise<THREE.Texture> {
     img.onload = () => {
       const w = img.naturalWidth
       const h = img.naturalHeight
-      const scale = Math.min(1, maxTextureSize / Math.max(w, h))
+      const scale = Math.min(1, size / Math.max(w, h))
 
       // Already small enough — use it directly, no redraw
       if (scale >= 1) {
-        const texture = new THREE.Texture(img)
-        texture.needsUpdate = true
-        resolve(texture)   // keeps `img` alive, which this texture points at
+        resolve(tune(new THREE.Texture(img)))   // keeps `img` alive, which this texture points at
         return
       }
 
@@ -115,17 +135,13 @@ function decode(url: string): Promise<THREE.Texture> {
       canvas.height = Math.max(1, Math.round(h * scale))
       const ctx = canvas.getContext('2d')
       if (!ctx) {
-        const texture = new THREE.Texture(img)
-        texture.needsUpdate = true
-        resolve(texture)
+        resolve(tune(new THREE.Texture(img)))
         return
       }
       ctx.imageSmoothingQuality = 'high'
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
 
-      const texture = new THREE.CanvasTexture(canvas)
-      texture.needsUpdate = true
-      finish(texture)
+      finish(tune(new THREE.CanvasTexture(canvas)))
     }
 
     img.onerror = () => finish(makePlaceholder())
@@ -133,24 +149,75 @@ function decode(url: string): Promise<THREE.Texture> {
   })
 }
 
-async function loadDownscaled(url: string): Promise<THREE.Texture> {
+async function loadAtSize(url: string, size: number): Promise<THREE.Texture> {
   await acquireSlot()
   try {
-    return await decode(url)
+    return await decode(url, size)
   } finally {
     releaseSlot()
   }
 }
 
-// Textures stay cached for the life of the page. They are small enough after
-// downscaling that this is cheaper than reloading on every re-layout, and node
-// URLs are stable.
-export function useNodeTexture(url: string): THREE.Texture {
+// High-resolution copies, kept on a short LRU. Only the selected node asks for
+// one, so the cap is about surviving rapid selection changes, not volume.
+const highResCache = new Map<string, THREE.Texture>()
+const highResOrder: string[] = []
+const highResPending = new Map<string, Promise<THREE.Texture>>()
+
+function touchHighRes(url: string): void {
+  const i = highResOrder.indexOf(url)
+  if (i >= 0) highResOrder.splice(i, 1)
+  highResOrder.push(url)
+}
+
+async function loadHighRes(url: string): Promise<THREE.Texture> {
+  const cached = highResCache.get(url)
+  if (cached) { touchHighRes(url); return cached }
+
+  const inflight = highResPending.get(url)
+  if (inflight) return inflight
+
+  const promise = loadAtSize(url, HIGH_RES_SIZE)
+  highResPending.set(url, promise)
+
+  const texture = await promise
+  highResPending.delete(url)
+  highResCache.set(url, texture)
+  touchHighRes(url)
+
+  // Evict oldest first, so what just got selected is never the thing freed
+  while (highResOrder.length > HIGH_RES_CACHE_LIMIT) {
+    const oldest = highResOrder.shift()!
+    highResCache.get(oldest)?.dispose()
+    highResCache.delete(oldest)
+  }
+
+  return texture
+}
+
+/**
+ * Base textures stay cached for the life of the page; node URLs are stable and
+ * reloading on every re-layout would cost more than keeping them.
+ *
+ * Pass highRes for the node the user is actually looking at. It renders at the
+ * shared resolution first and swaps in the detailed copy when that arrives, so
+ * selecting never blanks the card.
+ */
+export function useNodeTexture(url: string, highRes = false): THREE.Texture {
+  const [detailed, setDetailed] = useState<THREE.Texture | null>(null)
+
+  useEffect(() => {
+    if (!highRes) { setDetailed(null); return }
+    let cancelled = false
+    loadHighRes(url).then((texture) => { if (!cancelled) setDetailed(texture) })
+    return () => { cancelled = true }
+  }, [url, highRes])
+
   const entry = cache.get(url)
-  if (entry?.status === 'done') return entry.texture
+  if (entry?.status === 'done') return detailed ?? entry.texture
   if (entry?.status === 'pending') throw entry.promise
 
-  const promise = loadDownscaled(url).then((texture) => {
+  const promise = loadAtSize(url, maxTextureSize).then((texture) => {
     cache.set(url, { status: 'done', texture })
     version++
     listeners.forEach((cb) => cb())

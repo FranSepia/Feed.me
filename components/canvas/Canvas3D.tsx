@@ -43,12 +43,12 @@ export function Canvas3D() {
       {contextLost && <ContextLostNotice light={isLightBg(bgColor)} />}
       <Canvas
         camera={{ position: [0, 0, initZ], fov: initFov, near: 0.1, far: 200 }}
-        // Antialiasing is a fill-rate luxury a loaded phone canvas cannot afford
-        gl={{ antialias: !isMobileInit, alpha: false, powerPreference: 'high-performance' }}
+        gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }}
         style={{ background: bgColor }}
-        // Phones are fill-rate bound long before they run out of detail; rendering
-        // a busy canvas at full 2× retina is a large cost for no visible gain.
-        dpr={isMobileInit ? [1, 1.5] : [1, 2]}
+        // Full device pixel ratio. Capping this at 1.5 on mobile bought frame rate
+        // but softened everything on screen, which cost more in perceived quality
+        // than the texture sizes did.
+        dpr={[1, 2]}
         onCreated={onCreated}
         onPointerMissed={() => setSelectedNode(null)}
       >

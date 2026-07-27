@@ -51,7 +51,8 @@ export function ImageNode({ node, isSelected, isDimmed, isOrbit, targetPosition 
   const meshRef = useRef<THREE.Mesh>(null)
   const { camera } = useThree()
 
-  const texture = useNodeTexture(node.content)
+  // The selected card is the one being examined closely, so it gets the detailed copy
+  const texture = useNodeTexture(node.content, isSelected)
   const aspect = texture.image ? texture.image.width / texture.image.height : 1
   const w = 3 * aspect
   const h = 3

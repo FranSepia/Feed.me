@@ -187,7 +187,7 @@ export function BottomBar() {
   // through untouched at 4032×3024 — about 48 MB of GPU texture memory for a
   // single image, and the main reason a busy canvas crashed on mobile. The
   // deciding factor is pixel dimensions, not bytes, so that is what we check.
-  const MAX_UPLOAD_W = 1600
+  const MAX_UPLOAD_W = 2400
 
   const compressImage = (file: File): Promise<File> => {
     // Animated GIFs lose their animation through a canvas, and SVGs are already tiny
@@ -217,7 +217,7 @@ export function BottomBar() {
             if (!blob || blob.size >= file.size) { resolve(file); return }
             resolve(new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' }))
           },
-          'image/jpeg', 0.85
+          'image/jpeg', 0.92
         )
       }
       img.onerror = () => { URL.revokeObjectURL(objUrl); resolve(file) }
