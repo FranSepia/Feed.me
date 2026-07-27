@@ -18,6 +18,11 @@ const isMobile = typeof window !== 'undefined' && window.innerWidth < 600
 // enough to lock up a phone, so only the nodes nearest the selection get a slot.
 const MAX_AUTOPLAY_VIDEOS = isMobile ? 2 : 4
 
+// How many idle <video> elements may exist on a phone purely to show their first
+// frame. Comfortably under iOS's decoder ceiling, but enough that a canvas does
+// not look like a wall of blank cards.
+const MAX_MOBILE_VIDEO_PREVIEWS = 4
+
 // Must stay >= the largest entrance delay the node components roll for themselves,
 // plus enough of the spring to have visibly started
 const ENTRANCE_MAX_MS = 500
@@ -207,6 +212,18 @@ export function Scene() {
 
   const showSkeleton = skeletonMounted && !timedOut
 
+  // Which video nodes keep an idle element for their poster frame. Deliberately
+  // derived from canvas order rather than the selection, so selecting a node does
+  // not tear down and remount other cards' videos.
+  const previewVideoIds = useMemo(() => {
+    if (!isMobile) return null
+    return new Set(
+      nodes.filter((n) => n.type === 'video')
+        .slice(0, MAX_MOBILE_VIDEO_PREVIEWS)
+        .map((n) => n.id)
+    )
+  }, [nodes])
+
   // Which video nodes are allowed to autoplay — nearest to the selection wins
   const autoPlayIds = useMemo(() => {
     if (!selectedNode || !selNodeMap) return new Set<string>()
@@ -260,7 +277,13 @@ export function Scene() {
         if (node.type === 'image') element = <ImageNode   {...props} />
         else if (node.type === 'text') element = <TextNode    {...props} />
         else if (node.type === 'spotify') element = <SpotifyNode {...props} />
-        else if (node.type === 'video') element = <VideoNode   {...props} canAutoPlay={autoPlayIds.has(node.id)} />
+        else if (node.type === 'video') element = (
+          <VideoNode
+            {...props}
+            canAutoPlay={autoPlayIds.has(node.id)}
+            canPreview={previewVideoIds ? previewVideoIds.has(node.id) : true}
+          />
+        )
         else if (node.type === 'social') element = <SocialNode  {...props} />
         if (!element) return null
 

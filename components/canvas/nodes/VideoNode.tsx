@@ -39,9 +39,11 @@ interface Props {
   targetPosition: [number, number, number]
   /** Scene grants a limited number of autoplay slots so phones don't choke */
   canAutoPlay?: boolean
+  /** Scene grants a limited number of idle poster-frame slots on mobile */
+  canPreview?: boolean
 }
 
-export function VideoNode({ node, isSelected, isDimmed, isOrbit, targetPosition, canAutoPlay = false }: Props) {
+export function VideoNode({ node, isSelected, isDimmed, isOrbit, targetPosition, canAutoPlay = false, canPreview = true }: Props) {
   const setSelectedNode = useCanvasStore((s) => s.setSelectedNode)
   const setPlayingVideoUrl = useCanvasStore((s) => s.setPlayingVideoUrl)
   const removeNode = useCanvasStore((s) => s.removeNode)
@@ -51,6 +53,7 @@ export function VideoNode({ node, isSelected, isDimmed, isOrbit, targetPosition,
   const light = isLightBg(bgColor)
   const [hovered, setHovered] = useState(false)
   const [videoAspect, setVideoAspect] = useState(16 / 9)
+  const [inlinePlaying, setInlinePlaying] = useState(false)
 
   const ytId = getYouTubeId(node.content)
   const isYT = !!ytId
@@ -63,8 +66,12 @@ export function VideoNode({ node, isSelected, isDimmed, isOrbit, targetPosition,
   // and Scene has granted this node one of the limited autoplay slots
   const autoPlay = canAutoPlay && !isSelected && !isDimmed && selectedNodeId !== null
 
-  // Desktop can afford an idle <video> per card for its poster frame; phones cannot
-  const mountVideo = !isMobile || isSelected || autoPlay
+  // Mounting one <video> per node exhausts iOS's media decoders, but mounting
+  // none left every card blank, which reads as "the video didn't load". Scene
+  // hands out a small fixed number of poster slots instead; the rest fall back to
+  // the play-button card until they are tapped.
+  const mountVideo = !isMobile || canPreview || isSelected || autoPlay
+  const showPlayOverlay = !mountVideo || !inlinePlaying
 
   const captionClr = light ? 'rgba(0,0,0,0.75)'  : 'rgba(255,255,255,0.88)'
   const dateClr    = light ? 'rgba(0,0,0,0.45)'  : 'rgba(255,255,255,0.5)'
@@ -245,6 +252,8 @@ export function VideoNode({ node, isSelected, isDimmed, isOrbit, targetPosition,
                   preload="metadata"
                   playsInline
                   loop
+                  onPlay={() => setInlinePlaying(true)}
+                  onPause={() => setInlinePlaying(false)}
                   onLoadedMetadata={(e) => {
                     const v = e.currentTarget
                     if (v.videoWidth && v.videoHeight) {
@@ -253,7 +262,11 @@ export function VideoNode({ node, isSelected, isDimmed, isOrbit, targetPosition,
                   }}
                 />
               )}
-              {!isSelected && !autoPlay && (
+              {/* Driven by whether playback actually started, not by selection.
+                  iOS rejects play() that isn't inside a direct user gesture, and
+                  that rejection used to leave a black card with no play button and
+                  no hint that tapping again opens the full player. */}
+              {showPlayOverlay && (
                 <>
                   <div style={{
                     position: 'relative',
