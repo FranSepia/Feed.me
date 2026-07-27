@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useSyncExternalStore, Suspense, Component, ReactNode } from 'react'
+import { useMemo, useState, useEffect, useSyncExternalStore, Suspense, Component, ReactNode } from 'react'
 import { NodeData, useCanvasStore } from '@/lib/store'
 import { subscribeTextures, getTextureVersion, isTextureReady } from '@/lib/useNodeTexture'
 import { ImageNode } from './nodes/ImageNode'
@@ -17,6 +17,11 @@ const isMobile = typeof window !== 'undefined' && window.innerWidth < 600
 // YouTube node mounts its own iframe. Letting the whole canvas play together was
 // enough to lock up a phone, so only the nodes nearest the selection get a slot.
 const MAX_AUTOPLAY_VIDEOS = isMobile ? 2 : 4
+
+// Must stay >= the largest entrance delay the node components roll for themselves,
+// plus enough of the spring to have visibly started
+const ENTRANCE_MAX_MS = 500
+const FADE_MS = 450
 
 // Isolates a single node's failures. Previously one broken texture threw past the
 // canvas-wide boundary in Canvas3D, which rendered null and blanked everything.
@@ -171,15 +176,36 @@ export function Scene() {
   // It used to be tied to `nodesLoaded`, which flips as soon as the DB rows land
   // — a few milliseconds. The slow part is the images that load *after* that, so
   // the skeleton vanished right when the waiting actually started and the canvas
-  // sat empty. Track texture readiness instead, and drop skeletons one by one as
-  // the real images arrive.
+  // sat empty.
+  //
+  // A texture being decoded still isn't the same as an image being visible: each
+  // node waits out a random entrance delay (up to ENTRANCE_MAX_MS) and then flies
+  // in on a spring. So we hold the full skeleton until every image is decoded,
+  // then keep it up through that entrance window while fading it out, and the
+  // real images cross-fade in underneath.
   const textureVersion = useSyncExternalStore(subscribeTextures, getTextureVersion, () => 0)
-  const pendingImages = useMemo(
-    () => nodes.filter((n) => n.type === 'image' && !isTextureReady(n.content)).length,
+  const imagesReady = useMemo(
+    () => nodesLoaded && nodes.every((n) => n.type !== 'image' || isTextureReady(n.content)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [nodes, textureVersion]
+    [nodes, nodesLoaded, textureVersion]
   )
-  const skeletonCount = !nodesLoaded ? 10 : Math.min(pendingImages, 10)
+
+  const [skeletonMounted, setSkeletonMounted] = useState(true)
+  useEffect(() => {
+    if (!imagesReady) { setSkeletonMounted(true); return }
+    const timer = setTimeout(() => setSkeletonMounted(false), ENTRANCE_MAX_MS + FADE_MS)
+    return () => clearTimeout(timer)
+  }, [imagesReady])
+
+  // Safety valve: an image that never fires load or error must not pin the
+  // skeleton on screen forever.
+  const [timedOut, setTimedOut] = useState(false)
+  useEffect(() => {
+    const timer = setTimeout(() => setTimedOut(true), 20000)
+    return () => clearTimeout(timer)
+  }, [])
+
+  const showSkeleton = skeletonMounted && !timedOut
 
   // Which video nodes are allowed to autoplay — nearest to the selection wins
   const autoPlayIds = useMemo(() => {
@@ -205,7 +231,7 @@ export function Scene() {
   return (
     <>
       <CameraControls />
-      {skeletonCount > 0 && <SkeletonNodes count={skeletonCount} />}
+      {showSkeleton && <SkeletonNodes fading={imagesReady} />}
       {sorted.map((node) => {
         const isSelected = selectedNode === node.id
 
