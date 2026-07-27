@@ -86,18 +86,35 @@ function computeOrbitPositions(
   // Inset by a card so nothing is half off the edge, then grow with the canvas so
   // density stays constant — the same reason the loose layout scales, which is why
   // that one reads as evenly spread.
-  const idealCount = isMobile ? 20 : 32
-  const spread = Math.max(1, Math.sqrt(others.length / idealCount))
+  //
+  // Phones get a gentler growth and a ceiling: on a narrow portrait screen the
+  // desktop factor pushed most of the ring past the edges, leaving the view empty.
+  const spread = isMobile
+    ? Math.min(1.6, Math.max(1, Math.sqrt(others.length / 45)))
+    : Math.max(1, Math.sqrt(others.length / 32))
   const Rx = Math.max(1, halfW - cardHalfW) * spread
   const Ry = Math.max(1, halfH - cardHalfH) * spread
 
-  // Radius of the hole left for the selected card, sized independently on each
-  // axis because a selected image is much wider than it is tall
-  const rInner = Math.min(0.62, Math.max(
+  // Hole left for the selected card.
+  //
+  // A single normalised radius has to satisfy the tightest axis, and on a portrait
+  // phone that is the width — the selected card is nearly as wide as the screen.
+  // Applying that same fraction vertically, where Ry is more than twice Rx, carved
+  // out a band of dead space above and below it. Desktop is close to square in this
+  // respect, so its behaviour is deliberately left alone.
+  const rInnerUniform = Math.min(0.62, Math.max(
     (selHalfW + cardHalfW) / Rx,
     (selHalfH + cardHalfH) / Ry,
     0.18
   ))
+
+  // Mobile instead excludes an ellipse shaped like the selected card itself, so
+  // each direction only reserves the room that direction actually needs.
+  // Scaled slightly under 1 so a card may tuck a little way behind the centre
+  // one — they all render behind it, so a partial overlap reads as depth.
+  const TUCK = 0.86
+  const innerW = (selHalfW + cardHalfW) * TUCK
+  const innerH = (selHalfH + cardHalfH) * TUCK
 
   // Related tags take the inner rings, unrelated get pushed to the outside. The
   // old code multiplied unrelated positions by 2.2 after placement, which threw
@@ -112,14 +129,26 @@ function computeOrbitPositions(
   const ordered = [...related, ...unrelated]
 
   const golden = Math.PI * (3 - Math.sqrt(5))
-  const inner2 = rInner * rInner
   const total  = ordered.length
 
   ordered.forEach((node, i) => {
+    const angle = i * golden
+
+    // Where the hole ends in this particular direction. Solving the inner ellipse
+    // for the ray (Rx·cosθ, Ry·sinθ) gives the fraction of the way out at which a
+    // card stops touching the selected one — small above and below, large to the
+    // sides, instead of one compromise value everywhere.
+    let inner = rInnerUniform
+    if (isMobile) {
+      const ex = (Math.cos(angle) * Rx) / innerW
+      const ey = (Math.sin(angle) * Ry) / innerH
+      inner = Math.min(0.92, Math.max(0.12, 1 / Math.sqrt(ex * ex + ey * ey)))
+    }
+
     // sqrt spacing distributes by area, so rings do not crowd toward the centre
     const t = (i + 0.5) / total
+    const inner2 = inner * inner
     const r = Math.sqrt(inner2 + t * (1 - inner2))
-    const angle = i * golden
 
     // Seeded, so a re-render does not reshuffle the arrangement mid-animation
     const jx = (seededRandom(node.seed * 3 + 7) - 0.5) * Rx * 0.09
