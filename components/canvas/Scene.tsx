@@ -23,9 +23,8 @@ const MAX_AUTOPLAY_VIDEOS = isMobile ? 2 : 4
 // not look like a wall of blank cards.
 const MAX_MOBILE_VIDEO_PREVIEWS = 4
 
-// Must stay >= the largest entrance delay the node components roll for themselves,
-// plus enough of the spring to have visibly started
-const ENTRANCE_MAX_MS = 500
+// How long the skeleton keeps rendering after it starts fading out. Must stay >=
+// the ease in SkeletonItem, so it is already invisible when it unmounts.
 const FADE_MS = 450
 
 // Isolates a single node's failures. Previously one broken texture threw past the
@@ -239,24 +238,28 @@ export function Scene() {
   // the skeleton vanished right when the waiting actually started and the canvas
   // sat empty.
   //
-  // A texture being decoded still isn't the same as an image being visible: each
-  // node waits out a random entrance delay (up to ENTRANCE_MAX_MS) and then flies
-  // in on a spring. So we hold the full skeleton until every image is decoded,
-  // then keep it up through that entrance window while fading it out, and the
-  // real images cross-fade in underneath.
+  // It then waited for *every* texture, which overcorrected: cards arrive one by
+  // one, so the placeholders stayed up shimmering behind real photos. The
+  // skeleton is a stand-in for an empty canvas, so it only has to last until the
+  // canvas stops being empty — the first decoded image starts the fade, and the
+  // rest of the cards fly in over a canvas that is already clear.
   const textureVersion = useSyncExternalStore(subscribeTextures, getTextureVersion, () => 0)
-  const imagesReady = useMemo(
-    () => nodesLoaded && nodes.every((n) => n.type !== 'image' || isTextureReady(n.content)),
+  const firstImageReady = useMemo(
+    () => nodesLoaded && (
+      // A canvas with no images at all has nothing left to wait for
+      !nodes.some((n) => n.type === 'image') ||
+      nodes.some((n) => n.type === 'image' && isTextureReady(n.content))
+    ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [nodes, nodesLoaded, textureVersion]
   )
 
   const [skeletonMounted, setSkeletonMounted] = useState(true)
   useEffect(() => {
-    if (!imagesReady) { setSkeletonMounted(true); return }
-    const timer = setTimeout(() => setSkeletonMounted(false), ENTRANCE_MAX_MS + FADE_MS)
+    if (!firstImageReady) { setSkeletonMounted(true); return }
+    const timer = setTimeout(() => setSkeletonMounted(false), FADE_MS)
     return () => clearTimeout(timer)
-  }, [imagesReady])
+  }, [firstImageReady])
 
   // Safety valve: an image that never fires load or error must not pin the
   // skeleton on screen forever.
@@ -304,7 +307,7 @@ export function Scene() {
   return (
     <>
       <CameraControls />
-      {showSkeleton && <SkeletonNodes fading={imagesReady} />}
+      {showSkeleton && <SkeletonNodes fading={firstImageReady} />}
       {sorted.map((node) => {
         const isSelected = selectedNode === node.id
 

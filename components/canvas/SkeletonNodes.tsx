@@ -40,8 +40,10 @@ function SkeletonItem({ position, index, aspect, light, fading }: SkeletonItemPr
 
     if (!meshRef.current || !matRef.current) return
 
+    // Fast on purpose: the fade starts the moment the first photo is decoded, and
+    // the placeholders must be out of the way before the rest of the cards land
     const target = fading ? 0 : 1
-    fadeRef.current += (target - fadeRef.current) * Math.min(1, delta * 3.5)
+    fadeRef.current += (target - fadeRef.current) * Math.min(1, delta * 7)
     const fade = fadeRef.current
 
     // Billboard: always face the camera
