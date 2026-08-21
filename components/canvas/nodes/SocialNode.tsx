@@ -6,7 +6,7 @@ import { Html } from '@react-three/drei'
 import { useSpring, animated } from '@react-spring/three'
 import * as THREE from 'three'
 import { NodeData, useCanvasStore, SOCIAL_PLATFORMS } from '@/lib/store'
-import { NODE_SPRING, useEntranceDelay } from '@/lib/nodeMotion'
+import { NODE_SPRING, useEntranceDelay, htmlDepth, htmlCardScale } from '@/lib/nodeMotion'
 
 interface Props {
   node: NodeData
@@ -41,10 +41,12 @@ export function SocialNode({ node, isSelected, isDimmed, isOrbit, targetPosition
 
   const orbitScale = 0.66 * (0.80 + Math.abs(Math.sin(node.seed * 127.1 + 311.7)) * 0.40)
 
+  const targetScale = isSelected ? 1.1 : isOrbit ? (hovered ? orbitScale + 0.07 : orbitScale) : hovered ? 1.04 : 1
+
   const springs = useSpring({
     from: { position: entranceFrom.current.position, scale: 0 },
     position: targetPosition,
-    scale: isSelected ? 1.1 : isOrbit ? (hovered ? orbitScale + 0.07 : orbitScale) : hovered ? 1.04 : 1,
+    scale: targetScale,
     config: NODE_SPRING,
     delay: entranceDelay,
   })
@@ -83,10 +85,10 @@ export function SocialNode({ node, isSelected, isDimmed, isOrbit, targetPosition
       <Html
         center
         distanceFactor={10}
-        zIndexRange={[15, 5]}
+        zIndexRange={htmlDepth(isSelected)}
         style={{ pointerEvents: (isSelected || hovered) ? 'all' : 'none' }}
       >
-        <div style={{ position: 'relative', opacity: isDimmed ? 0.32 : 1, transition: 'opacity 0.4s' }}>
+        <div style={{ position: 'relative', opacity: isDimmed ? 0.32 : 1, ...htmlCardScale(targetScale) }}>
           {/* Tags when selected */}
           {isSelected && (
             <div style={{ display: 'flex', gap: '5px', justifyContent: 'center', marginBottom: '6px' }}>

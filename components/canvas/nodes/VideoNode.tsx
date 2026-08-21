@@ -1,14 +1,15 @@
 'use client'
 
-import { useRef, useState, useEffect } from 'react'
+import { useRef, useState } from 'react'
 import { useFrame, useThree } from '@react-three/fiber'
 import { Html } from '@react-three/drei'
 import { useSpring, animated } from '@react-spring/three'
 import * as THREE from 'three'
 import { NodeData, useCanvasStore } from '@/lib/store'
-import { NODE_SPRING, useEntranceDelay } from '@/lib/nodeMotion'
+import { NODE_SPRING, useEntranceDelay, htmlDepth, htmlCardScale } from '@/lib/nodeMotion'
 import { isLightBg } from '@/lib/colors'
 import { useVideoPoster } from '@/lib/useVideoPoster'
+import { useVideoTexture, usePosterTexture } from '@/lib/useVideoTexture'
 
 function getYouTubeId(url: string): string | null {
   const patterns = [
@@ -24,8 +25,6 @@ function getYouTubeId(url: string): string | null {
   return null
 }
 
-const isMobile = typeof window !== 'undefined' && window.innerWidth < 600
-
 function formatDate(dateStr: string): string {
   const [year, month, day] = dateStr.split('-').map(Number)
   return new Date(year, month - 1, day).toLocaleDateString('es-MX', {
@@ -39,48 +38,48 @@ interface Props {
   isDimmed: boolean
   isOrbit: boolean
   targetPosition: [number, number, number]
-  /** Scene grants a limited number of autoplay slots so phones don't choke */
-  canAutoPlay?: boolean
-  /** Scene grants a limited number of idle poster-frame slots on mobile */
-  canPreview?: boolean
+  /** Scene rations the live decoders; a card without one shows its poster frame */
+  canPlay?: boolean
 }
 
-export function VideoNode({ node, isSelected, isDimmed, isOrbit, targetPosition, canAutoPlay = false, canPreview = true }: Props) {
+export function VideoNode({ node, isSelected, isDimmed, isOrbit, targetPosition, canPlay = true }: Props) {
   const setSelectedNode = useCanvasStore((s) => s.setSelectedNode)
   const setPlayingVideoUrl = useCanvasStore((s) => s.setPlayingVideoUrl)
   const removeNode = useCanvasStore((s) => s.removeNode)
   const editMode = useCanvasStore((s) => s.editMode)
-  const selectedNodeId = useCanvasStore((s) => s.selectedNode)
   const bgColor = useCanvasStore((s) => s.bgColor)
   const light = isLightBg(bgColor)
   const [hovered, setHovered] = useState(false)
-  const [videoAspect, setVideoAspect] = useState(16 / 9)
-  const [inlinePlaying, setInlinePlaying] = useState(false)
 
   const ytId = getYouTubeId(node.content)
   const isYT = !!ytId
 
-  const videoRef = useRef<HTMLVideoElement>(null)
   const meshRef = useRef<THREE.Mesh>(null)
   const { camera } = useThree()
 
-  // autoPlay = a related-tag node is selected (but not this one), same logic as orbit,
-  // and Scene has granted this node one of the limited autoplay slots
-  const autoPlay = canAutoPlay && !isSelected && !isDimmed && selectedNodeId !== null
+  // Every video plays, looped and silent, from the moment it can. The selected
+  // card is the only one that gets sound.
+  const live = canPlay || isSelected
 
-  // Mounting one <video> per node exhausts iOS's media decoders, but mounting
-  // none left every card blank, which reads as "the video didn't load". Scene
-  // hands out a small fixed number of poster slots instead; the rest fall back to
-  // the play-button card until they are tapped.
-  const mountVideo = !isMobile || canPreview || isSelected || autoPlay
-  const showPlayOverlay = !mountVideo || !inlinePlaying
+  const { texture: videoTexture, aspect: liveAspect, ready: videoReady } =
+    useVideoTexture(isYT ? '' : node.content, !isYT && live, isSelected)
 
-  // Cards without a live element get a captured first frame instead of grey.
-  // YouTube nodes already have a real thumbnail from img.youtube.com.
-  const poster = useVideoPoster(node.content, !isYT && !mountVideo)
+  // A card with no decoder slot falls back to a captured first frame rather than
+  // a grey rectangle
+  const posterUrl = useVideoPoster(node.content, !isYT && !live)
+  const posterTexture = usePosterTexture(!isYT && !live ? posterUrl : null)
+
+  const map = videoReady ? videoTexture : posterTexture ?? videoTexture
+  const posterAspect = posterTexture?.image
+    ? posterTexture.image.width / posterTexture.image.height
+    : null
+  const aspect = liveAspect ?? posterAspect ?? 16 / 9
 
   const captionClr = light ? 'rgba(0,0,0,0.75)'  : 'rgba(255,255,255,0.88)'
   const dateClr    = light ? 'rgba(0,0,0,0.45)'  : 'rgba(255,255,255,0.5)'
+  const tagBg      = light ? 'rgba(255,255,255,0.75)' : 'rgba(20,20,20,0.65)'
+  const tagColor   = light ? 'rgba(0,0,0,0.75)'       : 'rgba(255,255,255,0.92)'
+  const tagBorder  = light ? 'rgba(0,0,0,0.15)'        : 'rgba(255,255,255,0.25)'
 
   // Random entrance — computed once on mount
   const entranceFrom = useRef({
@@ -93,25 +92,20 @@ export function VideoNode({ node, isSelected, isDimmed, isOrbit, targetPosition,
   const entranceDelay = useEntranceDelay()
 
   const orbitScale = 0.66 * (0.80 + Math.abs(Math.sin(node.seed * 127.1 + 311.7)) * 0.40)
+  // A selected local video is now the same kind of object as a selected photo,
+  // at the same camera distance, so it takes the same size. The YouTube card is
+  // still DOM and would only rasterise blurry if it were blown up that far.
+  const selectedScale = isYT ? 1.08 : 1.75
+  const targetScale = isSelected ? selectedScale : isOrbit ? (hovered ? orbitScale + 0.07 : orbitScale) : hovered ? 1.03 : 1
 
   const springs = useSpring({
-    from: { position: entranceFrom.current.position, scale: 0 },
+    from: { position: entranceFrom.current.position, scale: 0, opacity: 0 },
     position: targetPosition,
-    scale: isSelected ? 1.08 : isOrbit ? (hovered ? orbitScale + 0.07 : orbitScale) : autoPlay ? 1.04 : hovered ? 1.03 : 1,
+    scale: targetScale,
+    opacity: isDimmed ? 0.4 : 1,
     config: NODE_SPRING,
     delay: entranceDelay,
   })
-
-  // Autoplay local videos within the card
-  useEffect(() => {
-    if (isYT || !videoRef.current) return
-    if (isSelected || autoPlay) {
-      videoRef.current.muted = !isSelected // Unmute if explicitly selected, else mute to allow autoplay without disrupting
-      videoRef.current.play().catch(() => {})
-    } else {
-      videoRef.current.pause()
-    }
-  }, [isSelected, autoPlay, isYT])
 
   useFrame(() => {
     if (meshRef.current) meshRef.current.quaternion.copy(camera.quaternion)
@@ -119,8 +113,7 @@ export function VideoNode({ node, isSelected, isDimmed, isOrbit, targetPosition,
 
   const handleClick = (e: { stopPropagation: () => void }) => {
     e.stopPropagation()
-    
-    // If it's a local video and clicked while selected, we expand it into the modal
+    // A local video that is already selected expands into the full player
     if (!isYT && isSelected) {
       setPlayingVideoUrl(node.content)
     } else {
@@ -128,218 +121,240 @@ export function VideoNode({ node, isSelected, isDimmed, isOrbit, targetPosition,
     }
   }
 
-  // Card dimensions — YouTube fixed 16:9; local video uses detected aspect ratio
-  const H = 180
-  const W = isYT ? 320 : Math.round(H * videoAspect)
+  const pointerProps = {
+    onClick: handleClick,
+    onPointerOver: (e: { stopPropagation: () => void }) => { e.stopPropagation(); setHovered(true) },
+    onPointerOut: () => setHovered(false),
+  }
 
-  return (
-    <animated.mesh
-      ref={meshRef}
-      position={springs.position as unknown as [number,number,number]}
-      scale={springs.scale.to((s) => [s * 3 * (isYT ? 16/9 : videoAspect), s * 3, 1] as [number,number,number])}
-      onClick={handleClick}
-      onPointerOver={(e: { stopPropagation: () => void }) => { e.stopPropagation(); setHovered(true) }}
-      onPointerOut={() => setHovered(false)}
-    >
-      <planeGeometry args={[1, 1]} />
-      <meshBasicMaterial transparent opacity={0} />
+  // ── YouTube: only an iframe can play it, so it stays a DOM card ──
+  if (isYT) {
+    const H = 180
+    const W = 320
+    // Looping needs the playlist parameter — a bare loop=1 is ignored on a single video
+    const common = `rel=0&modestbranding=1&playsinline=1&loop=1&playlist=${ytId}`
+    const src = isSelected
+      ? `https://www.youtube.com/embed/${ytId}?autoplay=1&${common}`
+      : `https://www.youtube.com/embed/${ytId}?autoplay=1&mute=1&controls=0&${common}`
 
-      <Html
-        center
-        distanceFactor={10}
-        zIndexRange={[50, 0]}
-        style={{ pointerEvents: (isSelected || autoPlay) ? 'all' : 'none' }}
+    return (
+      <animated.mesh
+        ref={meshRef}
+        position={springs.position as unknown as [number, number, number]}
+        scale={springs.scale.to((s) => [s * 3 * (16 / 9), s * 3, 1] as [number, number, number])}
+        {...pointerProps}
       >
-        <div style={{ opacity: isDimmed ? 0.4 : 1, transition: 'opacity 0.4s', position: 'relative' }}>
+        <planeGeometry args={[1, 1]} />
+        <meshBasicMaterial transparent opacity={0} />
 
-          {/* Tags above card when selected */}
-          {isSelected && node.tags.length > 0 && (
-            <div style={{
-              position: 'absolute', bottom: '100%', left: 0,
-              display: 'flex', gap: '5px', flexWrap: 'nowrap', paddingBottom: '6px',
-              pointerEvents: 'none',
-            }}>
-              {node.tags.map((tag) => (
-                <span key={tag} style={{
-                  background: light ? 'rgba(255,255,255,0.75)' : 'rgba(20,20,20,0.65)',
-                  backdropFilter: 'blur(10px)',
-                  border: `1px solid ${light ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.25)'}`,
-                  color: light ? 'rgba(0,0,0,0.75)' : 'rgba(255,255,255,0.92)',
-                  fontSize: '11px', padding: '4px 11px', borderRadius: '20px', whiteSpace: 'nowrap',
-                }}>#{tag}</span>
-              ))}
-            </div>
-          )}
+        <Html
+          center
+          distanceFactor={10}
+          zIndexRange={htmlDepth(isSelected)}
+          style={{ pointerEvents: isSelected ? 'all' : 'none' }}
+        >
+          <div style={{
+            position: 'relative',
+            opacity: isDimmed ? 0.4 : 1,
+            ...htmlCardScale(targetScale),
+          }}>
+            {isSelected && node.tags.length > 0 && (
+              <div style={{
+                position: 'absolute', bottom: '100%', left: 0,
+                display: 'flex', gap: '5px', flexWrap: 'nowrap', paddingBottom: '6px',
+                pointerEvents: 'none',
+              }}>
+                {node.tags.map((tag) => (
+                  <span key={tag} style={{
+                    background: tagBg, backdropFilter: 'blur(10px)',
+                    border: `1px solid ${tagBorder}`, color: tagColor,
+                    fontSize: '11px', padding: '4px 11px', borderRadius: '20px', whiteSpace: 'nowrap',
+                  }}>#{tag}</span>
+                ))}
+              </div>
+            )}
 
-          {isYT ? (
-            /* ── YouTube card ── */
             <div style={{
               width: `${W}px`, height: `${H}px`,
               borderRadius: '12px', overflow: 'hidden',
-              position: 'relative', cursor: 'pointer',
-              background: '#000',
+              position: 'relative', cursor: 'pointer', background: '#000',
               boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
             }}>
-              {/* Thumbnail — always visible as background; mqdefault (320×180) is the most reliable size */}
+              {/* Thumbnail underneath, so there is never a black hole while the player boots */}
               <img
                 src={`https://img.youtube.com/vi/${ytId}/mqdefault.jpg`}
-                alt="thumbnail"
+                alt=""
                 style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
                 onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
               />
 
-              {(isSelected || autoPlay) && (
-                /* iframe overlaid on top — same 320×180, no jump.
-                   When user clicks directly (isSelected): autoplay with sound.
-                   When triggered by related tag (autoPlay only): mute=1 so browser allows autoplay. */
+              {live && (
                 <iframe
-                  key={isSelected ? 'selected' : 'autoplay'}
-                  src={
-                    isSelected
-                      ? `https://www.youtube.com/embed/${ytId}?autoplay=1&rel=0&modestbranding=1&playsinline=1`
-                      : `https://www.youtube.com/embed/${ytId}?autoplay=1&mute=1&rel=0&modestbranding=1&playsinline=1`
-                  }
+                  key={isSelected ? 'selected' : 'muted'}
+                  src={src}
                   allow="autoplay; fullscreen; picture-in-picture"
                   allowFullScreen
                   style={{
                     position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
                     border: 'none', display: 'block',
+                    // A card is selected by clicking it; letting the embed swallow that
+                    // click meant the first tap only ever reached YouTube's own UI
+                    pointerEvents: isSelected ? 'all' : 'none',
                   }}
                 />
               )}
 
-              {/* Play button shown only when not playing */}
-              {!isSelected && !autoPlay && (
+              {!live && (
                 <div style={{
-                  position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+                  position: 'absolute', inset: 0,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   background: 'rgba(0,0,0,0.18)',
                 }}>
-                  <div style={{
-                    width: '52px', height: '52px', borderRadius: '50%',
-                    background: 'rgba(255,255,255,0.20)', backdropFilter: 'blur(6px)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    border: '1.5px solid rgba(255,255,255,0.4)',
-                  }}>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
-                      <polygon points="5,3 19,12 5,21" />
-                    </svg>
-                  </div>
-                  {node.title && (
-                    <div style={{
-                      position: 'absolute', bottom: 0, left: 0, right: 0,
-                      background: 'linear-gradient(transparent, rgba(0,0,0,0.75))',
-                      padding: '24px 12px 10px', color: 'white',
-                      fontSize: '12px', fontWeight: 500,
-                    }}>{node.title}</div>
-                  )}
+                  <PlayBadge />
                 </div>
               )}
-            </div>
-          ) : (
-            /* ── Local video inline card ── */
-            <div style={{
-              width: `${W}px`, height: `${H}px`, borderRadius: '12px', overflow: 'hidden',
-              background: 'rgba(0,0,0,0.6)', border: '1px solid rgba(255,255,255,0.1)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-              position: 'relative',
-              boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
-            }}>
-              {/* On phones the element is mounted only while it is actually wanted.
-                  iOS caps how many media decoders exist at once, and a canvas that
-                  mounted one <video preload="metadata"> per node blew past that
-                  limit and took the page down. */}
-              {!mountVideo && poster && (
-                <img
-                  src={poster}
-                  alt=""
-                  // The capture keeps the video's proportions, so this is also how
-                  // an unmounted card learns its real shape instead of assuming 16:9
-                  onLoad={(e) => {
-                    const img = e.currentTarget
-                    if (img.naturalWidth && img.naturalHeight) {
-                      setVideoAspect(img.naturalWidth / img.naturalHeight)
-                    }
-                  }}
-                  style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                />
-              )}
-              {mountVideo && (
-                <video
-                  ref={videoRef}
-                  src={`${node.content}#t=0.001`}
-                  style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-                  preload="metadata"
-                  playsInline
-                  loop
-                  onPlay={() => setInlinePlaying(true)}
-                  onPause={() => setInlinePlaying(false)}
-                  onLoadedMetadata={(e) => {
-                    const v = e.currentTarget
-                    if (v.videoWidth && v.videoHeight) {
-                      setVideoAspect(v.videoWidth / v.videoHeight)
-                    }
-                  }}
-                />
-              )}
-              {/* Driven by whether playback actually started, not by selection.
-                  iOS rejects play() that isn't inside a direct user gesture, and
-                  that rejection used to leave a black card with no play button and
-                  no hint that tapping again opens the full player. */}
-              {showPlayOverlay && (
-                <>
-                  <div style={{
-                    position: 'relative',
-                    width: '52px', height: '52px', borderRadius: '50%',
-                    background: 'rgba(255,255,255,0.18)', backdropFilter: 'blur(6px)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    border: '1.5px solid rgba(255,255,255,0.4)',
-                  }}>
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
-                      <polygon points="5,3 19,12 5,21" />
-                    </svg>
-                  </div>
-                  {node.title && (
-                    <div style={{
-                      position: 'absolute', bottom: 0, left: 0, right: 0,
-                      background: 'linear-gradient(transparent, rgba(0,0,0,0.75))',
-                      padding: '24px 12px 10px', color: 'white', fontSize: '12px', fontWeight: 500,
-                    }}>{node.title}</div>
-                  )}
-                </>
-              )}
-            </div>
-          )}
 
-          {/* Caption + date below the card */}
-          {(node.caption || node.date) && (
-            <div style={{
-              paddingTop: '4px', width: `${W}px`,
-              display: 'flex', flexDirection: 'column', gap: '1px',
-              opacity: isDimmed ? 0.1 : 1, transition: 'opacity 0.4s',
-              pointerEvents: 'none',
-            }}>
-              {node.caption && (
-                <span style={{ color: captionClr, fontSize: '12px', lineHeight: 1.4, fontStyle: 'italic' }}>
-                  {node.caption}
-                </span>
-              )}
-              {node.date && (
-                <span style={{ color: dateClr, fontSize: '10px', fontStyle: 'italic', letterSpacing: '0.03em' }}>
-                  {formatDate(node.date)}
-                </span>
+              {node.title && !isSelected && (
+                <div style={{
+                  position: 'absolute', bottom: 0, left: 0, right: 0,
+                  background: 'linear-gradient(transparent, rgba(0,0,0,0.75))',
+                  padding: '24px 12px 10px', color: 'white',
+                  fontSize: '12px', fontWeight: 500, pointerEvents: 'none',
+                }}>{node.title}</div>
               )}
             </div>
-          )}
 
-          {editMode && (
-            <div style={{ position: 'absolute', top: '-8px', right: '-8px', pointerEvents: 'all' }}>
-              <DeleteButton onDelete={() => removeNode(node.id)} />
-            </div>
-          )}
-        </div>
-      </Html>
+            {(node.caption || node.date) && (
+              <div style={{
+                paddingTop: '4px', width: `${W}px`,
+                display: 'flex', flexDirection: 'column', gap: '1px',
+                opacity: isDimmed ? 0.1 : 1, transition: 'opacity 0.4s',
+                pointerEvents: 'none',
+              }}>
+                {node.caption && (
+                  <span style={{ color: captionClr, fontSize: '12px', lineHeight: 1.4, fontStyle: 'italic' }}>
+                    {node.caption}
+                  </span>
+                )}
+                {node.date && (
+                  <span style={{ color: dateClr, fontSize: '10px', fontStyle: 'italic', letterSpacing: '0.03em' }}>
+                    {formatDate(node.date)}
+                  </span>
+                )}
+              </div>
+            )}
+
+            {editMode && (
+              <div style={{ position: 'absolute', top: '-8px', right: '-8px', pointerEvents: 'all' }}>
+                <DeleteButton onDelete={() => removeNode(node.id)} />
+              </div>
+            )}
+          </div>
+        </Html>
+      </animated.mesh>
+    )
+  }
+
+  // ── Local video: a textured plane, exactly like a photo ──
+  return (
+    <animated.mesh
+      ref={meshRef}
+      position={springs.position as unknown as [number, number, number]}
+      scale={springs.scale.to((s) => [s * 3 * aspect, s * 3, 1] as [number, number, number])}
+      {...pointerProps}
+    >
+      <planeGeometry args={[1, 1]} />
+      <animated.meshBasicMaterial
+        map={map}
+        color={map ? '#ffffff' : '#111111'}
+        transparent
+        opacity={springs.opacity}
+        side={THREE.DoubleSide}
+        toneMapped={false}
+      />
+
+      {/* Only while there is no frame yet — a card that is playing needs no invitation */}
+      {!videoReady && (
+        <Html center distanceFactor={10} zIndexRange={htmlDepth(isSelected)} style={{ pointerEvents: 'none' }}>
+          <div style={{ opacity: isDimmed ? 0.4 : 1, ...htmlCardScale(targetScale) }}>
+            <PlayBadge />
+          </div>
+        </Html>
+      )}
+
+      {isSelected && node.tags.length > 0 && (
+        <Html
+          distanceFactor={10}
+          position={[-0.5, 0.62, 0.01]}
+          zIndexRange={htmlDepth(isSelected)}
+          style={{ pointerEvents: 'none', userSelect: 'none' }}
+        >
+          <div style={{ display: 'flex', gap: '5px', flexWrap: 'nowrap', paddingBottom: '4px' }}>
+            {node.tags.map((tag) => (
+              <span key={tag} style={{
+                background: tagBg, backdropFilter: 'blur(10px)',
+                border: `1px solid ${tagBorder}`, color: tagColor,
+                fontSize: '11px', padding: '4px 11px', borderRadius: '20px', whiteSpace: 'nowrap',
+              }}>#{tag}</span>
+            ))}
+          </div>
+        </Html>
+      )}
+
+      {(node.caption || node.date) && (
+        <Html
+          distanceFactor={10}
+          position={[-0.5, -0.515, 0.01]}
+          zIndexRange={htmlDepth(isSelected)}
+          style={{ pointerEvents: 'none', userSelect: 'none' }}
+        >
+          <div style={{
+            display: 'flex', flexDirection: 'column', gap: '1px',
+            width: `${Math.round(3 * aspect * 120)}px`,
+            opacity: isDimmed ? 0.1 : 1, transition: 'opacity 0.4s',
+            paddingTop: '4px',
+          }}>
+            {node.caption && (
+              <span style={{
+                color: captionClr, fontSize: '12px', lineHeight: 1.4, fontStyle: 'italic',
+                textShadow: light ? 'none' : '0 1px 4px rgba(0,0,0,0.5)',
+              }}>{node.caption}</span>
+            )}
+            {node.date && (
+              <span style={{
+                color: dateClr, fontSize: '10px', fontStyle: 'italic', letterSpacing: '0.03em',
+                textShadow: light ? 'none' : '0 1px 3px rgba(0,0,0,0.5)',
+              }}>{formatDate(node.date)}</span>
+            )}
+          </div>
+        </Html>
+      )}
+
+      {editMode && (
+        <Html
+          position={[0.5, 0.5, 0.01]}
+          zIndexRange={htmlDepth(isSelected)}
+          style={{ pointerEvents: 'all', transform: 'translate(-100%, -100%)' }}
+        >
+          <DeleteButton onDelete={() => removeNode(node.id)} />
+        </Html>
+      )}
     </animated.mesh>
+  )
+}
+
+function PlayBadge() {
+  return (
+    <div style={{
+      width: '52px', height: '52px', borderRadius: '50%',
+      background: 'rgba(255,255,255,0.20)', backdropFilter: 'blur(6px)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      border: '1.5px solid rgba(255,255,255,0.4)',
+    }}>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="white">
+        <polygon points="5,3 19,12 5,21" />
+      </svg>
+    </div>
   )
 }
 

@@ -3,25 +3,16 @@
 import { useMemo, useState, useEffect, useSyncExternalStore, Suspense, Component, ReactNode } from 'react'
 import { NodeData, useCanvasStore } from '@/lib/store'
 import { subscribeTextures, getTextureVersion, isTextureReady } from '@/lib/useNodeTexture'
+import { MAX_LIVE_VIDEOS } from '@/lib/useVideoTexture'
 import { ImageNode } from './nodes/ImageNode'
 import { TextNode } from './nodes/TextNode'
 import { SpotifyNode } from './nodes/SpotifyNode'
 import { VideoNode } from './nodes/VideoNode'
 import { SocialNode } from './nodes/SocialNode'
-import { CameraControls } from './CameraControls'
+import { CameraControls, zoomDistance } from './CameraControls'
 import { SkeletonNodes } from './SkeletonNodes'
 
 const isMobile = typeof window !== 'undefined' && window.innerWidth < 600
-
-// iOS Safari caps how many media elements can play at once, and every autoplaying
-// YouTube node mounts its own iframe. Letting the whole canvas play together was
-// enough to lock up a phone, so only the nodes nearest the selection get a slot.
-const MAX_AUTOPLAY_VIDEOS = isMobile ? 2 : 4
-
-// How many idle <video> elements may exist on a phone purely to show their first
-// frame. Comfortably under iOS's decoder ceiling, but enough that a canvas does
-// not look like a wall of blank cards.
-const MAX_MOBILE_VIDEO_PREVIEWS = 4
 
 // How long the skeleton keeps rendering after it starts fading out. Must stay >=
 // the ease in SkeletonItem, so it is already invisible when it unmounts.
@@ -74,8 +65,10 @@ function computeOrbitPositions(
   const selTags = sel.tags || []
 
   const aspect = typeof window !== 'undefined' ? window.innerWidth / window.innerHeight : 1.6
-  // Must match ZOOM_DIST in CameraControls so orbit positions land inside the actual viewport
-  const zoomD  = isMobile ? 16 : 14
+  // Taken from CameraControls rather than copied, so the ring is always laid out
+  // for the distance the camera actually parks at — which is not the same for a
+  // photo as for a text or link card
+  const zoomD  = zoomDistance(sel.type)
   const fovV   = isMobile ? 65 : 60
   // Visible half-extents at the selected node's depth (camera sits zoomD units away)
   const halfH  = zoomD * Math.tan((fovV / 2) * Math.PI / 180)
@@ -182,12 +175,21 @@ function computeOrbitPositions(
     // just tapped.
     const isUn = i >= related.length
     const zOffset = isUn
-      ? -24 - seededRandom(node.seed + 3) * 10
+      ? -10 - seededRandom(node.seed + 3) * 8
       : -1.5 - seededRandom(node.seed + 1) * 3
 
+    // Everything above places the card on the plane the selected one sits on, but
+    // the card is then pushed back out of that plane — and under perspective,
+    // pushing something back drags it toward the middle of the screen. Unrelated
+    // cards were sent 24–34 units back with no correction, so they arrived at
+    // roughly a third of the radius they were given: right on top of the card
+    // that had just been selected. Widening the offset by the same ratio the
+    // extra distance shrinks it by leaves the card exactly where the ring put it.
+    const depthFactor = (zoomD - zOffset) / zoomD
+
     result[node.id] = [
-      sel.position[0] + Math.cos(angle) * Rx * r + jx,
-      sel.position[1] + Math.sin(angle) * Ry * r + jy,
+      sel.position[0] + (Math.cos(angle) * Rx * r + jx) * depthFactor,
+      sel.position[1] + (Math.sin(angle) * Ry * r + jy) * depthFactor,
       sel.position[2] + zOffset,
     ]
   })
@@ -295,38 +297,17 @@ export function Scene() {
 
   const showSkeleton = skeletonMounted && !timedOut
 
-  // Which video nodes keep an idle element for their poster frame. Deliberately
-  // derived from canvas order rather than the selection, so selecting a node does
-  // not tear down and remount other cards' videos.
-  const previewVideoIds = useMemo(() => {
-    if (!isMobile) return null
-    return new Set(
-      nodes.filter((n) => n.type === 'video')
-        .slice(0, MAX_MOBILE_VIDEO_PREVIEWS)
-        .map((n) => n.id)
-    )
+  // Which video nodes get a live element. Every video loops silently from the
+  // moment it loads, but each live one holds a hardware decoder and a phone only
+  // has a few — past the cap, the rest show their captured first frame.
+  //
+  // Deliberately derived from canvas order rather than the selection, so choosing
+  // a card does not tear down and restart every other video on the canvas.
+  const liveVideoIds = useMemo(() => {
+    const videos = nodes.filter((n) => n.type === 'video')
+    if (videos.length <= MAX_LIVE_VIDEOS) return null   // null: no rationing needed
+    return new Set(videos.slice(0, MAX_LIVE_VIDEOS).map((n) => n.id))
   }, [nodes])
-
-  // Which video nodes are allowed to autoplay — nearest to the selection wins
-  const autoPlayIds = useMemo(() => {
-    if (!selectedNode || !selNodeMap) return new Set<string>()
-    const selTags = selNodeMap.tags ?? []
-    const eligible = nodes.filter((n) => {
-      if (n.type !== 'video' || n.id === selectedNode) return false
-      // Dimmed (unrelated) nodes never autoplay, matching the per-node rule below
-      return selTags.length === 0 || n.tags.some((t) => selTags.includes(t))
-    })
-    const selPos = selNodeMap.position
-    const dist2 = (n: NodeData) => {
-      const p = orbitPositions[n.id] ?? n.position
-      return (p[0] - selPos[0]) ** 2 + (p[1] - selPos[1]) ** 2
-    }
-    return new Set(
-      [...eligible].sort((a, b) => dist2(a) - dist2(b))
-        .slice(0, MAX_AUTOPLAY_VIDEOS)
-        .map((n) => n.id)
-    )
-  }, [nodes, selectedNode, selNodeMap, orbitPositions])
 
   return (
     <>
@@ -361,11 +342,7 @@ export function Scene() {
         else if (node.type === 'text') element = <TextNode    {...props} />
         else if (node.type === 'spotify') element = <SpotifyNode {...props} />
         else if (node.type === 'video') element = (
-          <VideoNode
-            {...props}
-            canAutoPlay={autoPlayIds.has(node.id)}
-            canPreview={previewVideoIds ? previewVideoIds.has(node.id) : true}
-          />
+          <VideoNode {...props} canPlay={liveVideoIds ? liveVideoIds.has(node.id) : true} />
         )
         else if (node.type === 'social') element = <SocialNode  {...props} />
         if (!element) return null

@@ -6,6 +6,8 @@ import * as THREE from 'three'
 import { useCanvasStore } from '@/lib/store'
 import { NODE_SPRING } from '@/lib/nodeMotion'
 
+const isMobileDevice = typeof window !== 'undefined' && window.innerWidth < 600
+
 const ZOOM_DIST_DESKTOP: Record<string, number> = {
   image: 14,
   video: 14,
@@ -20,6 +22,19 @@ const ZOOM_DIST_MOBILE: Record<string, number> = {
   text: 10,
   spotify: 10,
   social: 10,
+}
+
+/**
+ * How far the camera parks from a card of this type when it is selected.
+ *
+ * The orbit layout needs the same number: it lays the other cards out on the
+ * plane the selected one sits on, and that plane's on-screen size is entirely a
+ * function of this distance. When the two disagreed, the ring was computed for a
+ * camera that was somewhere else.
+ */
+export function zoomDistance(type: string): number {
+  const table = isMobileDevice ? ZOOM_DIST_MOBILE : ZOOM_DIST_DESKTOP
+  return table[type] ?? (isMobileDevice ? 13 : 7.5)
 }
 
 // Zoom is multiplicative, not additive: each gesture scales the remaining distance
@@ -44,9 +59,8 @@ export function CameraControls() {
   const lastMouse = useRef({ x: 0, y: 0 })
   const lastPinchDist = useRef<number | null>(null)
 
-  const isMobile = typeof window !== 'undefined' && window.innerWidth < 600
+  const isMobile = isMobileDevice
   const initZ = isMobile ? 34 : 20
-  const ZOOM_DIST = isMobile ? ZOOM_DIST_MOBILE : ZOOM_DIST_DESKTOP
 
   const freeTarget = useRef(new THREE.Vector3(0, 0, initZ))
   const targetPosition = useRef(new THREE.Vector3(0, 0, initZ))
@@ -66,7 +80,7 @@ export function CameraControls() {
           freeTarget.current.copy(targetPosition.current)
           wasZoomed.current = true
         }
-        const d = ZOOM_DIST[node.type] ?? (isMobile ? 13 : 7.5)
+        const d = zoomDistance(node.type)
 
         targetPosition.current.set(
           node.position[0],

@@ -6,7 +6,7 @@ import { Html } from '@react-three/drei'
 import { useSpring, animated } from '@react-spring/three'
 import * as THREE from 'three'
 import { NodeData, useCanvasStore } from '@/lib/store'
-import { NODE_SPRING, useEntranceDelay } from '@/lib/nodeMotion'
+import { NODE_SPRING, useEntranceDelay, htmlDepth } from '@/lib/nodeMotion'
 import { isLightBg } from '@/lib/colors'
 import { useNodeTexture } from '@/lib/useNodeTexture'
 
@@ -117,7 +117,7 @@ export function ImageNode({ node, isSelected, isDimmed, isOrbit, targetPosition 
         <Html
           distanceFactor={10}
           position={[-0.5, 0.62, 0.01]}
-          zIndexRange={[30, 20]}
+          zIndexRange={htmlDepth(isSelected)}
           style={{ pointerEvents: 'none', userSelect: 'none' }}
         >
           <div style={{ display: 'flex', gap: '5px', flexWrap: 'nowrap', justifyContent: 'flex-start', paddingBottom: '4px' }}>
@@ -142,7 +142,7 @@ export function ImageNode({ node, isSelected, isDimmed, isOrbit, targetPosition 
         <Html
           distanceFactor={10}
           position={[-0.5, -0.515, 0.01]}
-          zIndexRange={[10, 0]}
+          zIndexRange={htmlDepth(isSelected)}
           style={{ pointerEvents: 'none', userSelect: 'none' }}
         >
           <div style={{
@@ -181,7 +181,7 @@ export function ImageNode({ node, isSelected, isDimmed, isOrbit, targetPosition 
       {editMode && (
         <Html
           position={[0.5, 0.5, 0.01]}
-          zIndexRange={[50, 0]}
+          zIndexRange={htmlDepth(isSelected)}
           style={{ pointerEvents: 'all', transform: 'translate(-100%, -100%)' }}
         >
           <DeleteButton onDelete={() => removeNode(node.id)} />

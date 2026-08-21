@@ -6,7 +6,7 @@ import { Html } from '@react-three/drei'
 import { useSpring, animated } from '@react-spring/three'
 import * as THREE from 'three'
 import { NodeData, useCanvasStore } from '@/lib/store'
-import { NODE_SPRING, useEntranceDelay } from '@/lib/nodeMotion'
+import { NODE_SPRING, useEntranceDelay, htmlDepth, htmlCardScale } from '@/lib/nodeMotion'
 import { isLightBg } from '@/lib/colors'
 
 interface Props {
@@ -47,10 +47,12 @@ export function TextNode({ node, isSelected, isDimmed, isOrbit, targetPosition }
 
   const orbitScale = 0.66 * (0.80 + Math.abs(Math.sin(node.seed * 127.1 + 311.7)) * 0.40)
 
+  const targetScale = isSelected ? 1.12 : isOrbit ? (hovered ? orbitScale + 0.07 : orbitScale) : hovered ? 1.04 : 1
+
   const springs = useSpring({
     from: { position: entranceFrom.current.position, scale: 0, opacity: 0 },
     position: targetPosition,
-    scale: isSelected ? 1.12 : isOrbit ? (hovered ? orbitScale + 0.07 : orbitScale) : hovered ? 1.04 : 1,
+    scale: targetScale,
     opacity: isDimmed ? 0.4 : 1,
     config: NODE_SPRING,
     delay: entranceDelay,
@@ -82,10 +84,10 @@ export function TextNode({ node, isSelected, isDimmed, isOrbit, targetPosition }
       <Html
         center
         distanceFactor={10}
-        zIndexRange={[15, 5]}
+        zIndexRange={htmlDepth(isSelected)}
         style={{ pointerEvents: 'none', userSelect: 'none' }}
       >
-        <div style={{ position: 'relative' }}>
+        <div style={{ position: 'relative', ...htmlCardScale(targetScale) }}>
           {/* Tags — CSS-positioned above the card, left-aligned */}
           {isSelected && node.tags.length > 0 && (
             <div style={{

@@ -6,7 +6,7 @@ import { Html } from '@react-three/drei'
 import { useSpring, animated } from '@react-spring/three'
 import * as THREE from 'three'
 import { NodeData, useCanvasStore } from '@/lib/store'
-import { NODE_SPRING, useEntranceDelay } from '@/lib/nodeMotion'
+import { NODE_SPRING, useEntranceDelay, htmlDepth, htmlCardScale } from '@/lib/nodeMotion'
 import { isLightBg } from '@/lib/colors'
 
 declare global {
@@ -114,10 +114,12 @@ export function SpotifyNode({ node, isSelected, isDimmed, isOrbit, targetPositio
 
   const orbitScale = 0.66 * (0.80 + Math.abs(Math.sin(node.seed * 127.1 + 311.7)) * 0.40)
 
+  const targetScale = isSelected ? 1.1 : isOrbit ? orbitScale : autoPlay ? 1.06 : 1
+
   const springs = useSpring({
     from: { position: entranceFrom.current.position, scale: 0 },
     position: targetPosition,
-    scale: isSelected ? 1.1 : isOrbit ? orbitScale : autoPlay ? 1.06 : 1,
+    scale: targetScale,
     config: NODE_SPRING,
     delay: entranceDelay,
   })
@@ -139,15 +141,15 @@ export function SpotifyNode({ node, isSelected, isDimmed, isOrbit, targetPositio
     >
       <planeGeometry args={[1, 1]} />
       <meshBasicMaterial transparent opacity={0} />
-      <Html center distanceFactor={10} zIndexRange={[50, 0]} style={{ pointerEvents: 'all' }}>
+      <Html center distanceFactor={10} zIndexRange={htmlDepth(isSelected)} style={{ pointerEvents: 'all' }}>
         {/* Outer div covers the full node area — every click is a DOM event (required for autoplay) */}
         <div
           onClick={handleNodeClick}
           style={{
             position: 'relative',
             opacity: isDimmed ? 0.4 : 1,
-            transition: 'opacity 0.4s',
             userSelect: 'none',
+            ...htmlCardScale(targetScale),
             cursor: editMode ? 'default' : 'pointer',
             padding: '20px',
             margin: '-20px',
