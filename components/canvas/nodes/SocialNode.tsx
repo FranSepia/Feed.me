@@ -6,6 +6,7 @@ import { Html } from '@react-three/drei'
 import { useSpring, animated } from '@react-spring/three'
 import * as THREE from 'three'
 import { NodeData, useCanvasStore, SOCIAL_PLATFORMS } from '@/lib/store'
+import { NODE_SPRING, useEntranceDelay } from '@/lib/nodeMotion'
 
 interface Props {
   node: NodeData
@@ -35,8 +36,8 @@ export function SocialNode({ node, isSelected, isDimmed, isOrbit, targetPosition
       targetPosition[1] + (Math.random() - 0.5) * 40,
       targetPosition[2] - 10 - Math.random() * 20,
     ] as [number, number, number],
-    delay: Math.floor(Math.random() * 500),
   })
+  const entranceDelay = useEntranceDelay()
 
   const orbitScale = 0.66 * (0.80 + Math.abs(Math.sin(node.seed * 127.1 + 311.7)) * 0.40)
 
@@ -44,8 +45,8 @@ export function SocialNode({ node, isSelected, isDimmed, isOrbit, targetPosition
     from: { position: entranceFrom.current.position, scale: 0 },
     position: targetPosition,
     scale: isSelected ? 1.1 : isOrbit ? (hovered ? orbitScale + 0.07 : orbitScale) : hovered ? 1.04 : 1,
-    config: { mass: 1.4, tension: 120, friction: 28 },
-    delay: entranceFrom.current.delay,
+    config: NODE_SPRING,
+    delay: entranceDelay,
   })
 
   useFrame(() => {

@@ -4,6 +4,7 @@ import { useRef, useEffect } from 'react'
 import { useThree, useFrame } from '@react-three/fiber'
 import * as THREE from 'three'
 import { useCanvasStore } from '@/lib/store'
+import { NODE_SPRING } from '@/lib/nodeMotion'
 
 const ZOOM_DIST_DESKTOP: Record<string, number> = {
   image: 14,
@@ -45,6 +46,8 @@ export function CameraControls() {
   const freeTarget = useRef(new THREE.Vector3(0, 0, initZ))
   const targetPosition = useRef(new THREE.Vector3(0, 0, initZ))
   const currentPosition = useRef(new THREE.Vector3(0, 0, initZ))
+  const velocity = useRef(new THREE.Vector3())
+  const acceleration = useRef(new THREE.Vector3())
   const wasZoomed = useRef(false)
 
   const selectedNodeId = useCanvasStore((s) => s.selectedNode)
@@ -177,8 +180,32 @@ export function CameraControls() {
     }
   }, [gl])
 
-  useFrame(() => {
-    currentPosition.current.lerp(targetPosition.current, isMobile ? 0.14 : 0.08)
+  // The camera is driven by the same spring the cards use, rather than a lerp.
+  //
+  // Selecting a different card moves the whole orbit *and* the camera by the same
+  // vector, so if both follow the same curve that shared travel cancels on screen
+  // and you only see the re-layout. A lerp does not: it leaves at full speed while
+  // the cards are still accelerating out of rest, so for the first frames after a
+  // tap every card slid backwards across the screen before catching up — the whip.
+  useFrame((_, delta) => {
+    // A dropped frame must not blow the integrator up, and small fixed substeps
+    // keep the response identical regardless of refresh rate
+    const dt = Math.min(delta, 1 / 20)
+    const steps = Math.min(6, Math.max(1, Math.ceil(dt * 120)))
+    const h = dt / steps
+    const { mass, tension, friction } = NODE_SPRING
+
+    for (let i = 0; i < steps; i++) {
+      acceleration.current
+        .copy(targetPosition.current)
+        .sub(currentPosition.current)
+        .multiplyScalar(tension)
+        .addScaledVector(velocity.current, -friction)
+        .divideScalar(mass)
+      velocity.current.addScaledVector(acceleration.current, h)
+      currentPosition.current.addScaledVector(velocity.current, h)
+    }
+
     camera.position.copy(currentPosition.current)
   })
 
