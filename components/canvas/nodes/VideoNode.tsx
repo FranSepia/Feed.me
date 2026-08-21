@@ -61,15 +61,19 @@ export function VideoNode({ node, isSelected, isDimmed, isOrbit, targetPosition,
   // card is the only one that gets sound.
   const live = canPlay || isSelected
 
-  const { texture: videoTexture, aspect: liveAspect, ready: videoReady } =
+  const { texture: videoTexture, aspect: liveAspect, ready: videoReady, failed } =
     useVideoTexture(isYT ? '' : node.content, !isYT && live, isSelected)
 
-  // A card with no decoder slot falls back to a captured first frame rather than
-  // a grey rectangle
-  const posterUrl = useVideoPoster(node.content, !isYT && !live)
-  const posterTexture = usePosterTexture(!isYT && !live ? posterUrl : null)
+  // A card with no decoder slot — or one whose source will not play — falls back
+  // to a captured first frame rather than a grey rectangle
+  const wantsPoster = !isYT && (!live || failed)
+  const posterUrl = useVideoPoster(node.content, wantsPoster)
+  const posterTexture = usePosterTexture(wantsPoster ? posterUrl : null)
 
-  const map = videoReady ? videoTexture : posterTexture ?? videoTexture
+  // Never bind a video texture that has no frame in it yet — three uploads it as
+  // an empty texture, which is why a loading card looked like a transparent hole
+  // rather than a card that had not started yet
+  const map = videoReady ? videoTexture : posterTexture
   const posterAspect = posterTexture?.image
     ? posterTexture.image.width / posterTexture.image.height
     : null
@@ -204,7 +208,7 @@ export function VideoNode({ node, isSelected, isDimmed, isOrbit, targetPosition,
                 />
               )}
 
-              {!live && (
+              {(!live || failed) && (
                 <div style={{
                   position: 'absolute', inset: 0,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -273,8 +277,10 @@ export function VideoNode({ node, isSelected, isDimmed, isOrbit, targetPosition,
         toneMapped={false}
       />
 
-      {/* Only while there is no frame yet — a card that is playing needs no invitation */}
-      {!videoReady && (
+      {/* Only for a card the decoder budget could not cover. A video that is simply
+          still loading gets no badge: it is about to start on its own, and offering
+          a play button for it is what made the whole canvas look click-to-start. */}
+      {(!live || failed) && (
         <Html center distanceFactor={10} zIndexRange={htmlDepth(isSelected)} style={{ pointerEvents: 'none' }}>
           <div style={{ opacity: isDimmed ? 0.4 : 1, ...htmlCardScale(targetScale) }}>
             <PlayBadge />
