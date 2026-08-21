@@ -41,6 +41,13 @@ function seededRandom(seed: number) {
   return x - Math.floor(x)
 }
 
+// Stable 0–1 for a (card, selection) pair. Seeds are small integers, so the two
+// are mixed with irrational-ish factors before hashing to keep neighbouring cards
+// from landing on neighbouring values.
+function pairSeed(nodeSeed: number, selSeed: number) {
+  return seededRandom(nodeSeed * 12.9898 + selSeed * 78.233)
+}
+
 // Orbit layout when a node is selected.
 //
 // This used to be rejection sampling: pick a random point, keep it if it clears
@@ -125,13 +132,30 @@ function computeOrbitPositions(
     const isUn = selTags.length > 0 && !n.tags.some((t) => selTags.includes(t))
     ;(isUn ? unrelated : related).push(n)
   }
-  const ordered = [...related, ...unrelated]
+  // Deal each group afresh for *this* selection.
+  //
+  // Slot order used to be the order of `nodes`, which barely changes when the
+  // selection moves: the newly selected card leaves the list and the old one
+  // rejoins it, so only the cards whose index sat between the two shifted along.
+  // Because radius grows with index, that shifted range is a contiguous band —
+  // one ring of cards visibly re-placed itself and everything inside and outside
+  // it stayed put. Keying the order on the pair (card, selection) instead gives
+  // every card a different slot for every selection, so the whole canvas settles
+  // into a new arrangement rather than one annulus of it.
+  const dealKey = new Map(others.map((n) => [n.id, pairSeed(n.seed, sel.seed)]))
+  const deal = (group: NodeData[]) =>
+    [...group].sort((a, b) => dealKey.get(a.id)! - dealKey.get(b.id)!)
+  const ordered = [...deal(related), ...deal(unrelated)]
 
   const golden = Math.PI * (3 - Math.sqrt(5))
   const total  = ordered.length
 
+  // Rotating the whole spiral per selection as well, so the slots themselves are
+  // somewhere new — a card that happens to be dealt its old index still moves.
+  const phase = seededRandom(sel.seed * 7 + 13) * Math.PI * 2
+
   ordered.forEach((node, i) => {
-    const angle = i * golden
+    const angle = phase + i * golden
 
     // Where the hole ends in this particular direction. Solving the inner ellipse
     // for the ray (Rx·cosθ, Ry·sinθ) gives the fraction of the way out at which a
