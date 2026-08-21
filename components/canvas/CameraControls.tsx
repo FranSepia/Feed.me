@@ -28,6 +28,11 @@ const ZOOM_DIST_MOBILE: Record<string, number> = {
 // becomes — so you can no longer shoot straight past an image while pinching.
 const ZOOM_FLOOR = -12
 
+// How hard a pinch bites. Zoom is multiplicative, so the distance to the floor
+// moves by (finger spread ratio) ^ PINCH_EXPONENT — halving the exponent halves
+// the zoom a given pinch produces, exactly.
+const PINCH_EXPONENT = 0.425
+
 function applyZoom(z: number, factor: number, min: number, max: number): number {
   const scaled = ZOOM_FLOOR + (z - ZOOM_FLOOR) * factor
   return THREE.MathUtils.clamp(scaled, min, max)
@@ -142,7 +147,7 @@ export function CameraControls() {
           // The ratio between finger spreads is already scale-relative, which is
           // what makes this ease off as you approach. The exponent just softens
           // how hard a given pinch bites.
-          const ratio = Math.pow(lastPinchDist.current / dist, 0.85)
+          const ratio = Math.pow(lastPinchDist.current / dist, PINCH_EXPONENT)
           freeTarget.current.z = applyZoom(freeTarget.current.z, ratio, -10, maxZ)
           targetPosition.current.z = freeTarget.current.z
         }
