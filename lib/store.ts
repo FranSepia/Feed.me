@@ -147,6 +147,8 @@ interface CanvasStore {
   socials: Record<string, string>
   nodesLoaded: boolean
   filterTags: string[]
+  vennActive: boolean         // tag islands laid out as a Venn diagram
+  vennExtent: number          // half-size of that diagram, so the camera can frame it
   lastError: string | null    // surfaced to the user when a write is rolled back
 
   // Multi-user fields
@@ -160,6 +162,8 @@ interface CanvasStore {
   setSelectedNode: (id: string | null) => void
   setPlayingVideoUrl: (url: string | null) => void
   setFilterTags: (tags: string[]) => void
+  setVennActive: (v: boolean) => void
+  setVennExtent: (v: number) => void
   setBgColor: (color: string) => void
   setShowProfilePanel: (show: boolean) => void
   setEditMode: (v: boolean) => void
@@ -342,6 +346,8 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   socials: {},
   nodesLoaded: false,
   filterTags: [],
+  vennActive: false,
+  vennExtent: 0,
   lastError: null,
   userId: null,
   readOnly: false,
@@ -352,6 +358,10 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   setSelectedNode: (id) => set({ selectedNode: id }),
   setPlayingVideoUrl: (url) => set({ playingVideoUrl: url }),
   setFilterTags: (tags) => set({ filterTags: tags }),
+  // Opening the diagram drops the selection: the orbit layout outranks the Venn
+  // one, so leaving a card selected would hide the very thing being turned on
+  setVennActive: (v) => set({ vennActive: v, selectedNode: v ? null : get().selectedNode }),
+  setVennExtent: (v) => set({ vennExtent: v }),
   setShowProfilePanel: (show) => set({ showProfilePanel: show }),
   setEditMode: (v) => {
     if (get().readOnly) return  // no edit mode in public view
@@ -378,6 +388,8 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       nodesLoaded: false,
       socials: {},
       filterTags: [],
+      vennActive: false,
+      vennExtent: 0,
       lastError: null,
       userId: null,
       readOnly: false,

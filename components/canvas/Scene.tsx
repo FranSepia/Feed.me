@@ -4,6 +4,10 @@ import { useMemo, useState, useEffect, useSyncExternalStore, Suspense, Component
 import { NodeData, useCanvasStore } from '@/lib/store'
 import { subscribeTextures, getTextureVersion, isTextureReady } from '@/lib/useNodeTexture'
 import { MAX_LIVE_VIDEOS } from '@/lib/useVideoTexture'
+import {
+  computeVennLayout, pickVennTags, EMPTY_VENN,
+  MAX_ISLANDS_DESKTOP, MAX_ISLANDS_MOBILE,
+} from '@/lib/vennLayout'
 import { ImageNode } from './nodes/ImageNode'
 import { TextNode } from './nodes/TextNode'
 import { SpotifyNode } from './nodes/SpotifyNode'
@@ -11,6 +15,7 @@ import { VideoNode } from './nodes/VideoNode'
 import { SocialNode } from './nodes/SocialNode'
 import { CameraControls, zoomDistance } from './CameraControls'
 import { SkeletonNodes } from './SkeletonNodes'
+import { VennIslands } from './VennIslands'
 
 const isMobile = typeof window !== 'undefined' && window.innerWidth < 600
 
@@ -235,6 +240,8 @@ export function Scene() {
   const nodesLoaded = useCanvasStore((s) => s.nodesLoaded)
   const selectedNode = useCanvasStore((s) => s.selectedNode)
   const filterTags = useCanvasStore((s) => s.filterTags)
+  const vennActive = useCanvasStore((s) => s.vennActive)
+  const setVennExtent = useCanvasStore((s) => s.setVennExtent)
 
   const filterActive = filterTags.length > 0
 
@@ -250,6 +257,19 @@ export function Scene() {
     () => filterActive && !selectedNode ? computePerimeterPositions(nodes, filterTags) : {},
     [nodes, filterTags, filterActive, selectedNode]
   )
+
+  // Venn view: one island per tag, cards that carry two tags in the lens between
+  // them. A filter, when one is on, chooses which tags get an island — filter to
+  // two tags and you get the classic two-circle diagram of exactly those.
+  const venn = useMemo(() => {
+    if (!vennActive) return EMPTY_VENN
+    const max = isMobile ? MAX_ISLANDS_MOBILE : MAX_ISLANDS_DESKTOP
+    return computeVennLayout(nodes, pickVennTags(nodes, filterTags, max), isMobile)
+  }, [nodes, filterTags, vennActive])
+
+  // The camera needs the size of the diagram to frame it, and only this component
+  // has it
+  useEffect(() => { setVennExtent(venn.extent) }, [venn, setVennExtent])
 
   const sorted = [...nodes].sort((a, b) =>
     a.id === selectedNode ? 1 : b.id === selectedNode ? -1 : 0
@@ -313,6 +333,7 @@ export function Scene() {
     <>
       <CameraControls />
       {showSkeleton && <SkeletonNodes fading={firstImageReady} />}
+      {vennActive && !selectedNode && <VennIslands islands={venn.islands} />}
       {sorted.map((node) => {
         const isSelected = selectedNode === node.id
 
@@ -326,12 +347,21 @@ export function Scene() {
           isUnrelated = !node.tags.some(t => selNodeMap.tags.includes(t))
         }
 
-        const isDimmed = (filterActive && !selectedNode && !matchesFilter) || isUnrelated
-        const isOrbit = !isSelected && selectedNode !== null
+        // In the Venn view the cards that belong to no island are the ones held back
+        const isDimmed =
+          (filterActive && !selectedNode && !matchesFilter) ||
+          isUnrelated ||
+          (vennActive && !selectedNode && venn.outsiders.has(node.id))
 
-        // Priority: orbit positions > perimeter positions > default position
+        // Cards take orbit size inside the diagram too — a wall of full-size cards
+        // would bury the circles they are supposed to be sitting in
+        const isOrbit = !isSelected && (selectedNode !== null || vennActive)
+
+        // Priority: orbit > Venn > perimeter > wherever the card normally lives.
+        // Orbit wins because selecting a card is a request to look at that card.
         const targetPosition =
           orbitPositions[node.id] ??
+          venn.positions[node.id] ??
           perimeterPositions[node.id] ??
           node.position
 

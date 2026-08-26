@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useCanvasStore } from '@/lib/store'
 import { useResponsive } from '@/lib/useResponsive'
+import { VennButton } from './VennButton'
 
 export function FilterButton() {
   const [open, setOpen] = useState(false)
@@ -49,6 +50,11 @@ export function FilterButton() {
         maxWidth: isMobile ? 'calc(100vw - 32px)' : undefined,
       }}>
 
+        {/* The two tag controls ride in one row, so the Venn toggle sits beside the
+            funnel on desktop (where the chips stack underneath) exactly as it does
+            on mobile (where the chips wrap along the same line) */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+
         {/* Trigger button — identical glass style to EditModeButton/ProfileButton */}
         <button
           onClick={() => setOpen((v) => !v)}
@@ -79,6 +85,9 @@ export function FilterButton() {
         >
           <FunnelIcon />
         </button>
+
+          <VennButton />
+        </div>
 
         {/* Active selected tags — always visible, no container, just chips */}
         {isActive && !open && filterTags.map((tag) => (

@@ -68,9 +68,17 @@ export function CameraControls() {
   const velocity = useRef(new THREE.Vector3())
   const acceleration = useRef(new THREE.Vector3())
   const wasZoomed = useRef(false)
+  // Where the camera was before the Venn view took over the framing
+  const preVenn = useRef<THREE.Vector3 | null>(null)
+  // Raised while a diagram larger than the usual limit is on screen, so the first
+  // scroll after it is framed does not yank the camera back in
+  const baseMaxZ = isMobileDevice ? 60 : 50
+  const maxZoomOut = useRef(baseMaxZ)
 
   const selectedNodeId = useCanvasStore((s) => s.selectedNode)
   const nodes = useCanvasStore((s) => s.nodes)
+  const vennActive = useCanvasStore((s) => s.vennActive)
+  const vennExtent = useCanvasStore((s) => s.vennExtent)
 
   useEffect(() => {
     if (selectedNodeId) {
@@ -96,9 +104,45 @@ export function CameraControls() {
     }
   }, [selectedNodeId, nodes])
 
+  // Frame the whole diagram when the Venn view opens, and put the camera back
+  // where it was when it closes. The extent arrives a render after the toggle, so
+  // this runs twice — the first pass only records where we came from.
+  useEffect(() => {
+    if (vennActive) {
+      if (!preVenn.current) preVenn.current = targetPosition.current.clone()
+      if (vennExtent <= 0) return
+
+      const fov = camera instanceof THREE.PerspectiveCamera ? camera.fov : 60
+      const aspect = typeof window !== 'undefined' ? window.innerWidth / window.innerHeight : 1.6
+      const half = Math.tan((fov / 2) * Math.PI / 180)
+      // Has to clear the diagram both ways round; on a portrait phone the width
+      // is what runs out first
+      const dist = Math.max(vennExtent / half, vennExtent / (half * aspect)) * 1.12
+
+      targetPosition.current.set(0, 0, THREE.MathUtils.clamp(dist, 10, 400))
+      freeTarget.current.copy(targetPosition.current)
+      maxZoomOut.current = Math.max(baseMaxZ, targetPosition.current.z * 1.25)
+      wasZoomed.current = false
+    } else if (preVenn.current) {
+      // Read rather than subscribe: this effect must not re-run on a selection,
+      // or every click inside the diagram would re-frame it and fight the zoom
+      const selected = useCanvasStore.getState().selectedNode
+      if (selected) {
+        // A card is being examined — leave the camera on it, and let deselecting
+        // land back where the canvas was before the diagram opened
+        freeTarget.current.copy(preVenn.current)
+      } else {
+        targetPosition.current.copy(preVenn.current)
+        freeTarget.current.copy(preVenn.current)
+        wasZoomed.current = false
+      }
+      preVenn.current = null
+      maxZoomOut.current = baseMaxZ
+    }
+  }, [vennActive, vennExtent, camera, baseMaxZ])
+
   useEffect(() => {
     const canvas = gl.domElement
-    const maxZ = isMobile ? 60 : 50
 
     // How much world space a screen pixel covers depends on how far back the
     // camera sits, so panning has to scale with it too — otherwise a drag that
@@ -110,7 +154,7 @@ export function CameraControls() {
     const onWheel = (e: WheelEvent) => {
       e.preventDefault()
       const factor = Math.exp(e.deltaY * 0.0016)
-      targetPosition.current.z = applyZoom(targetPosition.current.z, factor, -10, maxZ)
+      targetPosition.current.z = applyZoom(targetPosition.current.z, factor, -10, maxZoomOut.current)
       freeTarget.current.z = targetPosition.current.z
     }
 
@@ -162,7 +206,7 @@ export function CameraControls() {
           // what makes this ease off as you approach. The exponent just softens
           // how hard a given pinch bites.
           const ratio = Math.pow(lastPinchDist.current / dist, PINCH_EXPONENT)
-          freeTarget.current.z = applyZoom(freeTarget.current.z, ratio, -10, maxZ)
+          freeTarget.current.z = applyZoom(freeTarget.current.z, ratio, -10, maxZoomOut.current)
           targetPosition.current.z = freeTarget.current.z
         }
         lastPinchDist.current = dist
