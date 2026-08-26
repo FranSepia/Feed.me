@@ -14,6 +14,16 @@ export interface NodeData {
   tags: string[]
   position: [number, number, number]
   seed: number
+  /**
+   * How much bigger than standard this card is drawn while it sits at rest.
+   *
+   * Everything on a user's canvas is one size, which is what makes it read as a
+   * canvas. The landing is the exception: its photographs are the first thing a
+   * visitor sees and they have to carry the screen, so they are laid out at
+   * two-and-a-half times the usual. Selecting and orbiting ignore it — those are
+   * uniform states by design.
+   */
+  scale?: number
 }
 
 export const SOCIAL_PLATFORMS = [
@@ -290,13 +300,13 @@ async function rawDbWrite(
   body: Record<string, unknown> | null,
   endpoint: string = '/rest/v1/canvas_nodes'
 ): Promise<WriteResult> {
-  if (typeof window === 'undefined') return { ok: false, error: 'No disponible en el servidor' }
+  if (typeof window === 'undefined') return { ok: false, error: 'Not available on the server' }
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const anonKey    = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  if (!supabaseUrl || !anonKey) return { ok: false, error: 'Supabase no está configurado' }
+  if (!supabaseUrl || !anonKey) return { ok: false, error: 'Supabase is not configured' }
 
   const token = await getAuthToken()
-  if (!token) return { ok: false, error: 'Tu sesión expiró — volvé a iniciar sesión' }
+  if (!token) return { ok: false, error: 'Your session expired — sign in again' }
 
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), 8000)
@@ -317,15 +327,15 @@ async function rawDbWrite(
     if (!res.ok) {
       const detail = await res.text().catch(() => '')
       console.error(`[Feed.Me] DB ${method} ${res.status}:`, detail)
-      if (res.status === 401 || res.status === 403) return { ok: false, error: 'Tu sesión expiró — volvé a iniciar sesión' }
-      if (res.status === 409) return { ok: false, error: 'Ese elemento ya existe' }
+      if (res.status === 401 || res.status === 403) return { ok: false, error: 'Your session expired — sign in again' }
+      if (res.status === 409) return { ok: false, error: 'That item already exists' }
       return { ok: false, error: `Error del servidor (${res.status})` }
     }
 
     const rows = await res.json().catch(() => null)
     if (!Array.isArray(rows) || rows.length === 0) {
       console.error(`[Feed.Me] DB ${method} affected 0 rows (RLS or unknown id):`, queryParams)
-      return { ok: false, error: 'No se guardó — revisá tus permisos' }
+      return { ok: false, error: 'Could not save — check your permissions' }
     }
     return { ok: true }
   } catch (err) {
@@ -333,8 +343,8 @@ async function rawDbWrite(
     return {
       ok: false,
       error: (err as Error).name === 'AbortError'
-        ? 'Tiempo de espera agotado — revisá tu conexión'
-        : 'No se pudo conectar',
+        ? 'Timed out — check your connection'
+        : 'Could not connect',
     }
   } finally {
     clearTimeout(timer)
@@ -381,7 +391,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     const { readOnly, userId } = get()
     if (!readOnly && userId) {
       rawDbWrite('PATCH', `?id=eq.${encodeURIComponent(userId)}`, { bg_color: color }, '/rest/v1/profiles')
-        .then((r) => { if (!r.ok) set({ lastError: `No se guardó el color: ${r.error}` }) })
+        .then((r) => { if (!r.ok) set({ lastError: `The color was not saved: ${r.error}` }) })
     }
   },
 
@@ -443,8 +453,8 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
         set({
           nodesLoaded: true,
           lastError: res.status === 401 || res.status === 403
-            ? 'No se pudo cargar tu canvas — volvé a iniciar sesión'
-            : 'No se pudo cargar tu canvas — revisá tu conexión',
+            ? 'Could not load your canvas — sign in again'
+            : 'Could not load your canvas — check your connection',
         })
         return
       }
@@ -520,7 +530,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       }
     } catch (e) {
       console.error('Failed to load from Supabase:', e)
-      set({ nodesLoaded: true, lastError: 'No se pudo cargar tu canvas — revisá tu conexión' })
+      set({ nodesLoaded: true, lastError: 'Could not load your canvas — check your connection' })
     }
   },
 
@@ -723,7 +733,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
     if (!supabaseUrl || !anonKey) throw new Error('Supabase env vars not set')
 
     const token = await getAuthToken()
-    if (!token) throw new Error('Tu sesión expiró — volvé a iniciar sesión')
+    if (!token) throw new Error('Your session expired — sign in again')
 
     const fixedId = `${userId}-socials-config`
     const base    = `${supabaseUrl}/rest/v1/canvas_nodes`
@@ -772,11 +782,11 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       // Verify the row was actually written (with return=representation we get the row back)
       const rows: unknown[] = await res.json().catch(() => [])
       if (!Array.isArray(rows) || rows.length === 0) {
-        throw new Error('El servidor no confirmó el guardado — revisa tus permisos')
+        throw new Error('The server did not confirm the save — check your permissions')
       }
     } catch (err) {
       if ((err as Error).name === 'AbortError') {
-        throw new Error('Tiempo de espera agotado — verifica tu conexión')
+        throw new Error('Timed out — check your connection')
       }
       throw err
     } finally {

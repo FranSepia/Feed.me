@@ -20,7 +20,7 @@ const MOBILE_CAPTION_LIMIT = 20
 
 function formatDate(dateStr: string): string {
   const [year, month, day] = dateStr.split('-').map(Number)
-  return new Date(year, month - 1, day).toLocaleDateString('es-MX', {
+  return new Date(year, month - 1, day).toLocaleDateString('en-US', {
     day: 'numeric', month: 'long', year: 'numeric',
   })
 }
@@ -64,7 +64,17 @@ export function ImageNode({ node, isSelected, isDimmed, isOrbit, targetPosition 
   const orbitBase = typeof window !== 'undefined' && window.innerWidth < 600 ? 0.44 : 0.66
   const seedVar   = Math.abs(Math.sin(node.seed * 127.1 + 311.7))   // stable 0–1 per node
   const orbitScale = orbitBase * (0.80 + seedVar * 0.40)             // 80–120 % of base
-  const targetScale = isSelected ? 1.75 : isOrbit ? (hovered ? orbitScale + 0.07 : orbitScale) : hovered ? 1.04 : 1
+  // Only the resting size is scaled. A selected card and an orbit ring are
+  // uniform states — the point of them is that every card is the same size —
+  // so a node that is drawn large on the open canvas still takes its turn at
+  // the same size as the rest once you are looking at something.
+  const restScale = node.scale ?? 1
+  const targetScale = isSelected ? 1.75 : isOrbit ? (hovered ? orbitScale + 0.07 : orbitScale) : (hovered ? 1.04 : 1) * restScale
+
+  // Caption and tags are DOM, so they do not grow with the mesh on their own.
+  // Tying their distance factor to the same scale keeps a big photograph from
+  // being labelled in type too small to read.
+  const labelFactor = 10 * (isOrbit ? 1 : restScale)
 
   // Random entrance — computed once on mount, stable across re-renders
   const entranceFrom = useRef({
@@ -115,7 +125,7 @@ export function ImageNode({ node, isSelected, isDimmed, isOrbit, targetPosition 
       {/* Tags — left-aligned, just above the top edge, growing rightward */}
       {isSelected && node.tags.length > 0 && (
         <Html
-          distanceFactor={10}
+          distanceFactor={labelFactor}
           position={[-0.5, 0.62, 0.01]}
           zIndexRange={htmlDepth(isSelected)}
           style={{ pointerEvents: 'none', userSelect: 'none' }}
@@ -140,7 +150,7 @@ export function ImageNode({ node, isSelected, isDimmed, isOrbit, targetPosition 
       {/* Caption — below image, floating, full image width, left edge anchor */}
       {(node.caption || node.date) && showCaption && (
         <Html
-          distanceFactor={10}
+          distanceFactor={labelFactor}
           position={[-0.5, -0.515, 0.01]}
           zIndexRange={htmlDepth(isSelected)}
           style={{ pointerEvents: 'none', userSelect: 'none' }}

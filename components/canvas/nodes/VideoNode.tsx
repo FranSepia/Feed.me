@@ -27,7 +27,7 @@ function getYouTubeId(url: string): string | null {
 
 function formatDate(dateStr: string): string {
   const [year, month, day] = dateStr.split('-').map(Number)
-  return new Date(year, month - 1, day).toLocaleDateString('es-MX', {
+  return new Date(year, month - 1, day).toLocaleDateString('en-US', {
     day: 'numeric', month: 'long', year: 'numeric',
   })
 }

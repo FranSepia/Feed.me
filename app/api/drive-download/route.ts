@@ -126,7 +126,7 @@ async function handleGooglePhotos(rawUrl: string): Promise<NextResponse> {
   return NextResponse.json(
     {
       error:
-        'No se pudo extraer el archivo. Asegúrate de que el álbum o foto sea público (compartido con "Cualquier persona con el enlace").',
+        'Could not extract the file. Make sure the album or photo is public (shared with "Anyone with the link").',
     },
     { status: 422 }
   )

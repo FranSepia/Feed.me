@@ -79,9 +79,9 @@ function ContextLostNotice({ light }: { light: boolean }) {
       backdropFilter: 'blur(12px)', WebkitBackdropFilter: 'blur(12px)',
       color: light ? 'rgba(40,40,40,0.92)' : 'rgba(240,240,240,0.92)',
     }}>
-      <span style={{ fontSize: '15px', fontWeight: 600 }}>Se quedó sin memoria de video</span>
+      <span style={{ fontSize: '15px', fontWeight: 600 }}>Out of video memory</span>
       <span style={{ fontSize: '13px', maxWidth: '300px', lineHeight: 1.5, opacity: 0.75 }}>
-        Este canvas tiene demasiado contenido para este dispositivo. Recargá la página para volver a intentarlo.
+        This canvas holds more than this device can render. Reload the page to try again.
       </span>
       <button
         onClick={() => window.location.reload()}
@@ -92,7 +92,7 @@ function ContextLostNotice({ light }: { light: boolean }) {
           color: 'white', fontSize: '14px', fontWeight: 600,
         }}
       >
-        Recargar
+        Reload
       </button>
     </div>
   )

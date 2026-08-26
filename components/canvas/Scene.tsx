@@ -13,6 +13,8 @@ import { TextNode } from './nodes/TextNode'
 import { SpotifyNode } from './nodes/SpotifyNode'
 import { VideoNode } from './nodes/VideoNode'
 import { SocialNode } from './nodes/SocialNode'
+import { AuthNode } from './nodes/AuthNode'
+import { HeadlineNode } from './nodes/HeadlineNode'
 import { CameraControls, zoomDistance } from './CameraControls'
 import { SkeletonNodes } from './SkeletonNodes'
 import { VennIslands } from './VennIslands'
@@ -378,6 +380,9 @@ export function Scene() {
           <VideoNode {...props} canPlay={liveVideoIds ? liveVideoIds.has(node.id) : true} />
         )
         else if (node.type === 'social') element = <SocialNode  {...props} />
+        // Landing-only cards — see components/landing
+        else if (node.type === 'auth') element = <AuthNode     {...props} />
+        else if (node.type === 'headline') element = <HeadlineNode {...props} />
         if (!element) return null
 
         // Per-node Suspense so a slow image shows the rest of the canvas instead

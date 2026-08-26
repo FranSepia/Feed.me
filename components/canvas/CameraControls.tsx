@@ -14,6 +14,12 @@ const ZOOM_DIST_DESKTOP: Record<string, number> = {
   text: 5.5,
   spotify: 5.5,
   social: 5.5,
+  // The landing's cards are drawn 1:1 with their CSS size at the distance the
+  // camera rests at, so selecting one has to *move* to enlarge it. 'auth' parks
+  // exactly where the camera started: choosing the sign-in card recentres it
+  // without resizing a form the visitor may already be typing into.
+  auth: 20,
+  headline: 12,
 }
 
 const ZOOM_DIST_MOBILE: Record<string, number> = {
@@ -22,6 +28,8 @@ const ZOOM_DIST_MOBILE: Record<string, number> = {
   text: 10,
   spotify: 10,
   social: 10,
+  auth: 34,
+  headline: 26,
 }
 
 /**

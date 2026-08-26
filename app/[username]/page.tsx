@@ -1,4 +1,5 @@
 import { Metadata, ResolvingMetadata } from 'next'
+import { redirect } from 'next/navigation'
 import { PublicProfileClient } from '@/components/profile/PublicProfileClient'
 import type { Profile } from '@/lib/auth-context'
 
@@ -83,52 +84,10 @@ export async function generateMetadata(
 export default async function PublicProfilePage({ params }: Props) {
   const profile = await getProfile(params.username)
 
-  if (!profile) {
-    return (
-      <div style={{
-        width: '100vw', height: '100vh',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: '#0a0a0a',
-        flexDirection: 'column', gap: '20px',
-      }}>
-        <div style={{
-          fontSize: '28px', fontWeight: 700, color: 'white',
-          letterSpacing: '-0.02em',
-        }}>
-          Feed<span style={{ color: 'rgba(255,255,255,0.4)' }}>.</span>Me
-        </div>
-        <div style={{ color: 'rgba(255,255,255,0.5)', fontSize: '16px' }}>
-          @{params.username} does not exist
-        </div>
-        <div style={{ display: 'flex', gap: '12px', marginTop: '8px' }}>
-          <a href="/login" style={{
-            padding: '12px 28px',
-            borderRadius: '12px',
-            background: 'rgba(255,255,255,0.08)',
-            border: '1px solid rgba(255,255,255,0.15)',
-            color: 'rgba(255,255,255,0.7)',
-            fontSize: '14px',
-            textDecoration: 'none',
-            fontWeight: 500,
-          }}>
-            Sign In
-          </a>
-          <a href="/register" style={{
-            padding: '12px 28px',
-            borderRadius: '12px',
-            background: 'rgba(255,255,255,0.1)',
-            border: '1px solid rgba(255,255,255,0.15)',
-            color: 'white',
-            fontSize: '14px',
-            textDecoration: 'none',
-            fontWeight: 500,
-          }}>
-            Create your Feed.Me
-          </a>
-        </div>
-      </div>
-    )
-  }
+  // A profile that isn't there used to be its own dead end. The home canvas can
+  // do more with the visitor than an apology can — it says the name is free and
+  // has the sign-up form right there — so that is where they go.
+  if (!profile) redirect(`/?missing=${encodeURIComponent(params.username)}`)
 
   return <PublicProfileClient profile={profile} />
 }

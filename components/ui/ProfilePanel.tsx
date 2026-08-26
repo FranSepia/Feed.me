@@ -315,13 +315,13 @@ export function ProfilePanel() {
                     // 9-second safety net — if setSocials hangs beyond its own 8s
                     // AbortController (e.g. localStorage read blocks), this unblocks the UI
                     const timeout = new Promise<never>((_, reject) =>
-                      setTimeout(() => reject(new Error('Tiempo de espera agotado — verifica tu conexión')), 9000)
+                      setTimeout(() => reject(new Error('Timed out — check your connection')), 9000)
                     )
                     await Promise.race([setSocials(localSocials), timeout])
                     setSocialsSaved(true)
                     setTimeout(() => setSocialsSaved(false), 2500)
                   } catch (e: unknown) {
-                    setSocialsError(e instanceof Error ? e.message : 'Error al guardar')
+                    setSocialsError(e instanceof Error ? e.message : 'Could not save')
                   } finally {
                     setSocialsSaving(false)
                   }

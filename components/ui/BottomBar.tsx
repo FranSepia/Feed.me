@@ -291,7 +291,7 @@ export function BottomBar() {
         const file = await fetchGoogleFile(value)
         addImageFiles([file])
       } catch (err: any) {
-        setDriveError(err.message ?? 'Error al descargar de Google Photos')
+        setDriveError(err.message ?? 'Could not download from Google Photos')
       } finally {
         setDriveLoading(false)
       }
@@ -310,7 +310,7 @@ export function BottomBar() {
         setVideoFile(URL.createObjectURL(file))
         setVideoFileName(file.name)
       } catch (err: any) {
-        setDriveError(err.message ?? 'Error al descargar de Google Photos')
+        setDriveError(err.message ?? 'Could not download from Google Photos')
       } finally {
         setDriveLoading(false)
       }

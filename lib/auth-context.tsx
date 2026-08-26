@@ -129,7 +129,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               setUser(null)
               setProfile(null)
               setLoading(false)
-              if (typeof window !== 'undefined') window.location.replace('/login')
+              if (typeof window !== 'undefined') window.location.replace('/')
               return
             }
             setUser(u)

@@ -20,7 +20,7 @@ export function SaveButton({
   saving = false,
   saved = false,
   error = null,
-  label = 'Guardar',
+  label = 'Save',
   fullWidth = false,
 }: SaveButtonProps) {
   const [hovered, setHovered] = useState(false)
