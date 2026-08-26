@@ -30,9 +30,12 @@ export function VennIslands({ islands }: { islands: VennIsland[] }) {
 }
 
 function Island({ island, light, index }: { island: VennIsland; light: boolean; index: number }) {
+  // One neutral ink for every circle. Colour would have made the tags easy to tell
+  // apart, but it would also have been the loudest thing on a canvas whose whole
+  // look is glass over the background — the labels say which circle is which.
   const color = useMemo(
-    () => new THREE.Color().setHSL(island.hue / 360, 0.58, light ? 0.45 : 0.62),
-    [island.hue, light]
+    () => new THREE.Color(light ? '#2b2e3c' : '#e8ebf2'),
+    [light]
   )
 
   // Staggered so the diagram assembles itself rather than snapping into place
@@ -55,7 +58,7 @@ function Island({ island, light, index }: { island: VennIsland; light: boolean; 
         <animated.meshBasicMaterial
           color={color}
           transparent
-          opacity={springs.fill.to((v) => v * (light ? 0.1 : 0.13))}
+          opacity={springs.fill.to((v) => v * (light ? 0.055 : 0.075))}
           depthWrite={false}
         />
       </mesh>
@@ -66,20 +69,30 @@ function Island({ island, light, index }: { island: VennIsland; light: boolean; 
         <animated.meshBasicMaterial
           color={color}
           transparent
-          opacity={springs.edge.to((v) => v * 0.55)}
+          opacity={springs.edge.to((v) => v * (light ? 0.34 : 0.40))}
           depthWrite={false}
         />
       </mesh>
 
-      {/* No distanceFactor on purpose: the camera pulls right back to frame a big
+      {/* Hung at the island's own angle rather than straight up, so two labels
+          never stack — including when two tags always travel together and their
+          circles come out in the same place.
+
+          No distanceFactor on purpose: the camera pulls right back to frame a big
           diagram, and a label that scaled with it would be unreadable exactly when
-          you most need to know which circle is which */}
+          you most need to know which circle is which. */}
       <Html
         center
-        position={[0, radius, 0.02]}
+        position={[
+          Math.cos(island.labelAngle) * radius,
+          Math.sin(island.labelAngle) * radius,
+          0.02,
+        ]}
         zIndexRange={htmlDepth(false)}
         style={{ pointerEvents: 'none', userSelect: 'none' }}
       >
+        {/* Same glass as the buttons, so the diagram belongs to the same set of
+            surfaces as the rest of the interface */}
         <div style={{
           display: 'flex',
           alignItems: 'baseline',
@@ -87,20 +100,23 @@ function Island({ island, light, index }: { island: VennIsland; light: boolean; 
           padding: '5px 13px',
           borderRadius: '20px',
           whiteSpace: 'nowrap',
-          background: light ? 'rgba(255,255,255,0.80)' : 'rgba(20,20,20,0.70)',
-          border: `1px solid ${color.getStyle()}`,
-          backdropFilter: 'blur(10px)',
-          WebkitBackdropFilter: 'blur(10px)',
-          boxShadow: light ? '0 2px 10px rgba(0,0,0,0.10)' : '0 2px 10px rgba(0,0,0,0.45)',
+          background: 'linear-gradient(160deg, rgba(255,255,255,0.68) 0%, rgba(240,240,240,0.52) 100%)',
+          borderTop: '1px solid rgba(255,255,255,0.90)',
+          borderLeft: '1px solid rgba(255,255,255,0.90)',
+          borderBottom: '1px solid rgba(180,180,180,0.35)',
+          borderRight: '1px solid rgba(180,180,180,0.35)',
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
+          boxShadow: '3px 3px 8px rgba(0,0,0,0.10), -2px -2px 6px rgba(255,255,255,0.80)',
         }}>
           <span style={{
             fontSize: '13px',
             fontWeight: 600,
-            color: light ? 'rgba(30,32,45,0.92)' : 'rgba(255,255,255,0.94)',
+            color: 'rgba(50,54,78,0.95)',
           }}>#{island.tag}</span>
           <span style={{
             fontSize: '11px',
-            color: light ? 'rgba(30,32,45,0.50)' : 'rgba(255,255,255,0.55)',
+            color: 'rgba(68,72,96,0.55)',
           }}>{island.count}</span>
         </div>
       </Html>

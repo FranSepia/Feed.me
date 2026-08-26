@@ -7,6 +7,7 @@ import { ProfilePanel } from '@/components/ui/ProfilePanel'
 import { EditModeButton } from '@/components/ui/EditModeButton'
 import { ProfileButton } from '@/components/ui/ProfileButton'
 import { FilterButton } from '@/components/ui/FilterButton'
+import { VennButton } from '@/components/ui/VennButton'
 import { ShareButton } from '@/components/ui/ShareButton'
 import { NodeEditor } from '@/components/ui/NodeEditor'
 import { ErrorToast } from '@/components/ui/ErrorToast'
@@ -41,6 +42,7 @@ export default function EditorPage() {
       <Canvas3D />
       <BottomBar />
       <FilterButton />
+      <VennButton />
       <EditModeButton />
       <ProfileButton />
       <ShareButton username={profile?.username} />

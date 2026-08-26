@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { FilterButton } from '@/components/ui/FilterButton'
+import { VennButton } from '@/components/ui/VennButton'
 import { PublicBanner } from '@/components/ui/PublicBanner'
 import { ErrorToast } from '@/components/ui/ErrorToast'
 import { useCanvasStore } from '@/lib/store'
@@ -71,6 +72,7 @@ export function PublicProfileClient({ profile }: { profile: Profile }) {
 
       <Canvas3D />
       <FilterButton />
+      <VennButton />
       <PublicBanner />
       <ErrorToast />
 

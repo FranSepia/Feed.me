@@ -1,12 +1,16 @@
 'use client'
 
 import { useCanvasStore } from '@/lib/store'
+import { useResponsive } from '@/lib/useResponsive'
 
 /**
- * Latching toggle for the Venn view. It sits inside FilterButton's cluster, so
- * it lands next to the funnel on both screens the canvas appears on — the editor
- * and a shared profile — and follows the same row-on-mobile, column-on-desktop
- * arrangement as everything else up there.
+ * Latching toggle for the Venn view, on both screens the canvas appears on — the
+ * editor and a shared profile.
+ *
+ * It sits at the far right, level with the funnel on the far left, which keeps
+ * the top-left free for the filter's tag chips: on a phone those wrap along that
+ * same line and would otherwise shove this button around. In the editor it steps
+ * one place inward, because the share button already owns the corner there.
  *
  * Pressed is a real state, not a flash: while the diagram is open the button
  * stays sunken and a shade darker, and clicking it again lets it back up.
@@ -15,6 +19,8 @@ export function VennButton() {
   const vennActive = useCanvasStore((s) => s.vennActive)
   const setVennActive = useCanvasStore((s) => s.setVennActive)
   const nodes = useCanvasStore((s) => s.nodes)
+  const readOnly = useCanvasStore((s) => s.readOnly)
+  const { isMobile } = useResponsive()
 
   // Nothing to draw a diagram from
   if (!nodes.some((n) => n.tags.length > 0)) return null
@@ -25,6 +31,13 @@ export function VennButton() {
       title={vennActive ? 'Close the tag diagram' : 'Show tags as a Venn diagram'}
       aria-pressed={vennActive}
       style={{
+        position: 'fixed',
+        // Level with the funnel across from it, and with the share button when
+        // there is one
+        top: isMobile ? '16px' : '24px',
+        // A shared canvas has the corner free; the editor's share button does not
+        right: readOnly ? '24px' : '78px',
+        zIndex: 499,
         width: '44px',
         height: '44px',
         borderRadius: '50%',
