@@ -4,7 +4,9 @@ import { configureTextureBudget } from './useNodeTexture'
 
 export interface NodeData {
   id: string
-  type: 'image' | 'video' | 'text' | 'spotify' | 'social'
+  // 'auth' and 'headline' only ever exist on the landing canvas, which is built
+  // in code (see components/landing). The database never returns them.
+  type: 'image' | 'video' | 'text' | 'spotify' | 'social' | 'auth' | 'headline'
   content: string
   title?: string
   caption?: string
@@ -175,6 +177,7 @@ interface CanvasStore {
   removeNode: (id: string) => Promise<void>
   updateNode: (id: string, updates: Partial<NodeData>) => Promise<void>
   loadFromSupabase: (userId: string) => Promise<void>
+  setStaticNodes: (nodes: NodeData[]) => void
   resetCanvas: () => void
 }
 
@@ -380,6 +383,27 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       rawDbWrite('PATCH', `?id=eq.${encodeURIComponent(userId)}`, { bg_color: color }, '/rest/v1/profiles')
         .then((r) => { if (!r.ok) set({ lastError: `No se guardó el color: ${r.error}` }) })
     }
+  },
+
+  // Loads a canvas that lives in the code rather than in the database — today
+  // that is only the landing page. Read-only and userId-less on purpose: every
+  // write path in this store bails out without one, so nothing here can ever
+  // reach Supabase.
+  setStaticNodes: (nodes) => {
+    configureTextureBudget(nodes.filter((n) => n.type === 'image').length)
+    set({
+      nodes,
+      nodesLoaded: true,
+      readOnly: true,
+      editMode: false,
+      userId: null,
+      selectedNode: null,
+      socials: {},
+      filterTags: [],
+      vennActive: false,
+      vennFrame: null,
+      lastError: null,
+    })
   },
 
   resetCanvas: () => {
