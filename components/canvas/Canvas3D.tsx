@@ -42,7 +42,10 @@ export function Canvas3D() {
     <div className="w-full h-full absolute inset-0">
       {contextLost && <ContextLostNotice light={isLightBg(bgColor)} />}
       <Canvas
-        camera={{ position: [0, 0, initZ], fov: initFov, near: 0.1, far: 200 }}
+        // far has to clear the furthest the camera ever backs off — framing a big
+        // Venn diagram put it past 200, and everything on the canvas was clipped
+        // away at once, which reads exactly like the photos disappearing
+        camera={{ position: [0, 0, initZ], fov: initFov, near: 0.1, far: 500 }}
         gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }}
         style={{ background: bgColor }}
         // Full device pixel ratio. Capping this at 1.5 on mobile bought frame rate

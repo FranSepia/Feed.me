@@ -148,7 +148,9 @@ interface CanvasStore {
   nodesLoaded: boolean
   filterTags: string[]
   vennActive: boolean         // tag islands laid out as a Venn diagram
-  vennExtent: number          // half-size of that diagram, so the camera can frame it
+  // [minX, minY, maxX, maxY] around that diagram's circles, so the camera can
+  // frame it exactly — a box, because the diagram is rarely square
+  vennFrame: [number, number, number, number] | null
   lastError: string | null    // surfaced to the user when a write is rolled back
 
   // Multi-user fields
@@ -163,7 +165,7 @@ interface CanvasStore {
   setPlayingVideoUrl: (url: string | null) => void
   setFilterTags: (tags: string[]) => void
   setVennActive: (v: boolean) => void
-  setVennExtent: (v: number) => void
+  setVennFrame: (f: [number, number, number, number] | null) => void
   setBgColor: (color: string) => void
   setShowProfilePanel: (show: boolean) => void
   setEditMode: (v: boolean) => void
@@ -347,7 +349,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   nodesLoaded: false,
   filterTags: [],
   vennActive: false,
-  vennExtent: 0,
+  vennFrame: null,
   lastError: null,
   userId: null,
   readOnly: false,
@@ -361,7 +363,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
   // Opening the diagram drops the selection: the orbit layout outranks the Venn
   // one, so leaving a card selected would hide the very thing being turned on
   setVennActive: (v) => set({ vennActive: v, selectedNode: v ? null : get().selectedNode }),
-  setVennExtent: (v) => set({ vennExtent: v }),
+  setVennFrame: (f) => set({ vennFrame: f }),
   setShowProfilePanel: (show) => set({ showProfilePanel: show }),
   setEditMode: (v) => {
     if (get().readOnly) return  // no edit mode in public view
@@ -389,7 +391,7 @@ export const useCanvasStore = create<CanvasStore>((set, get) => ({
       socials: {},
       filterTags: [],
       vennActive: false,
-      vennExtent: 0,
+      vennFrame: null,
       lastError: null,
       userId: null,
       readOnly: false,

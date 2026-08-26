@@ -78,7 +78,7 @@ export function CameraControls() {
   const selectedNodeId = useCanvasStore((s) => s.selectedNode)
   const nodes = useCanvasStore((s) => s.nodes)
   const vennActive = useCanvasStore((s) => s.vennActive)
-  const vennExtent = useCanvasStore((s) => s.vennExtent)
+  const vennFrame = useCanvasStore((s) => s.vennFrame)
 
   useEffect(() => {
     if (selectedNodeId) {
@@ -104,22 +104,31 @@ export function CameraControls() {
     }
   }, [selectedNodeId, nodes])
 
-  // Frame the whole diagram when the Venn view opens, and put the camera back
-  // where it was when it closes. The extent arrives a render after the toggle, so
-  // this runs twice — the first pass only records where we came from.
+  // Frame the diagram when the Venn view opens, and put the camera back where it
+  // was when it closes. The frame arrives a render after the toggle, so this runs
+  // twice — the first pass only records where we came from.
   useEffect(() => {
     if (vennActive) {
       if (!preVenn.current) preVenn.current = targetPosition.current.clone()
-      if (vennExtent <= 0) return
+      if (!vennFrame) return
+
+      const [minX, minY, maxX, maxY] = vennFrame
+      const cx = (minX + maxX) / 2
+      const cy = (minY + maxY) / 2
+      const halfW = Math.max((maxX - minX) / 2, 0.01)
+      const halfH = Math.max((maxY - minY) / 2, 0.01)
 
       const fov = camera instanceof THREE.PerspectiveCamera ? camera.fov : 60
       const aspect = typeof window !== 'undefined' ? window.innerWidth / window.innerHeight : 1.6
       const half = Math.tan((fov / 2) * Math.PI / 180)
-      // Has to clear the diagram both ways round; on a portrait phone the width
-      // is what runs out first
-      const dist = Math.max(vennExtent / half, vennExtent / (half * aspect)) * 1.12
 
-      targetPosition.current.set(0, 0, THREE.MathUtils.clamp(dist, 10, 400))
+      // Whichever side runs out first decides, and barely — the point is to back
+      // off exactly far enough to hold the circles, because every unit further
+      // costs the photos, and they are what the diagram is made of. Centred on the
+      // diagram rather than the origin, so nothing is wasted framing empty canvas.
+      const dist = Math.max(halfH / half, halfW / (half * aspect)) * 1.05
+
+      targetPosition.current.set(cx, cy, THREE.MathUtils.clamp(dist, 10, 300))
       freeTarget.current.copy(targetPosition.current)
       maxZoomOut.current = Math.max(baseMaxZ, targetPosition.current.z * 1.25)
       wasZoomed.current = false
@@ -139,7 +148,7 @@ export function CameraControls() {
       preVenn.current = null
       maxZoomOut.current = baseMaxZ
     }
-  }, [vennActive, vennExtent, camera, baseMaxZ])
+  }, [vennActive, vennFrame, camera, baseMaxZ])
 
   useEffect(() => {
     const canvas = gl.domElement

@@ -241,7 +241,7 @@ export function Scene() {
   const selectedNode = useCanvasStore((s) => s.selectedNode)
   const filterTags = useCanvasStore((s) => s.filterTags)
   const vennActive = useCanvasStore((s) => s.vennActive)
-  const setVennExtent = useCanvasStore((s) => s.setVennExtent)
+  const setVennFrame = useCanvasStore((s) => s.setVennFrame)
 
   const filterActive = filterTags.length > 0
 
@@ -264,12 +264,15 @@ export function Scene() {
   const venn = useMemo(() => {
     if (!vennActive) return EMPTY_VENN
     const max = isMobile ? MAX_ISLANDS_MOBILE : MAX_ISLANDS_DESKTOP
-    return computeVennLayout(nodes, pickVennTags(nodes, filterTags, max), isMobile)
+    const aspect = typeof window !== 'undefined' ? window.innerWidth / window.innerHeight : 1.6
+    return computeVennLayout(nodes, pickVennTags(nodes, filterTags, max), isMobile, aspect)
   }, [nodes, filterTags, vennActive])
 
   // The camera needs the size of the diagram to frame it, and only this component
   // has it
-  useEffect(() => { setVennExtent(venn.extent) }, [venn, setVennExtent])
+  useEffect(() => {
+    setVennFrame(venn.islands.length > 0 ? venn.bounds : null)
+  }, [venn, setVennFrame])
 
   const sorted = [...nodes].sort((a, b) =>
     a.id === selectedNode ? 1 : b.id === selectedNode ? -1 : 0
