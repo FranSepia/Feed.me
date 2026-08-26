@@ -37,6 +37,7 @@ export const SOCIAL_PLATFORMS = [
   { key: 'twitch', label: 'Twitch', color: '#9146FF', icon: 'TW' },
   { key: 'linkedin', label: 'LinkedIn', color: '#0077B5', icon: 'LI' },
   { key: 'spotify', label: 'Spotify', color: '#1DB954', icon: 'SP' },
+  { key: 'github', label: 'GitHub', color: '#181717', icon: 'GH' },
 ]
 
 // Golden-angle spiral layout
