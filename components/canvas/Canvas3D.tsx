@@ -39,7 +39,15 @@ export function Canvas3D() {
   }, [])
 
   return (
-    <div className="w-full h-full absolute inset-0">
+    // zIndex 0 is load-bearing. drei hands every <Html> overlay a z-index in the
+    // tens of millions so that cards sort against each other by depth, and with
+    // this container left at `auto` those numbers competed with the interface
+    // itself — a Venn island's label, at fourteen million, painted straight over
+    // the "Create yours" banner at five hundred. A positioned box with a real
+    // z-index opens a stacking context, which keeps that arithmetic inside the
+    // canvas where it belongs: everything in here now sorts below anything the
+    // page puts on top of it.
+    <div className="w-full h-full absolute inset-0" style={{ zIndex: 0 }}>
       {contextLost && <ContextLostNotice light={isLightBg(bgColor)} />}
       <Canvas
         // far has to clear the furthest the camera ever backs off — framing a big

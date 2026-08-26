@@ -199,6 +199,7 @@ function AuthCard({ palette: p, light, signIn, signUp, onSignedIn }: AuthCardPro
     outline: 'none',
     width: '100%',
     boxSizing: 'border-box',
+    userSelect: 'text',
   }
 
   return (
@@ -213,6 +214,9 @@ function AuthCard({ palette: p, light, signIn, signUp, onSignedIn }: AuthCardPro
         backdropFilter: 'blur(30px)', WebkitBackdropFilter: 'blur(30px)',
         boxShadow: p.shadow,
         display: 'flex', flexDirection: 'column', gap: '14px',
+        // The card is draggable canvas everywhere except its fields, so a drag
+        // across it must not smear a text selection over the copy
+        userSelect: 'none',
         opacity: appeared ? 1 : 0,
         transform: appeared ? 'translateY(0)' : 'translateY(10px)',
         transition: 'opacity 0.5s ease, transform 0.5s cubic-bezier(0.22,0.61,0.36,1)',

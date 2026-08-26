@@ -56,19 +56,41 @@ const ZOOM_FLOOR = -12
 // the zoom a given pinch produces, exactly.
 const PINCH_EXPONENT = 0.425
 
+/** Screen pixels of travel past which a press counts as a drag, not a tap. */
+const DRAG_SLOP = 5
+
 function applyZoom(z: number, factor: number, min: number, max: number): number {
   const scaled = ZOOM_FLOOR + (z - ZOOM_FLOOR) * factor
   return THREE.MathUtils.clamp(scaled, min, max)
 }
 
+/**
+ * True for something the visitor is trying to operate rather than drag past.
+ *
+ * A drag that starts on a text field is that field's — selecting an email
+ * address must not send the canvas flying. Everything else on a card, including
+ * its background and its prose, is canvas as far as panning is concerned.
+ */
+function isControl(target: EventTarget | null): boolean {
+  return (
+    target instanceof Element &&
+    target.closest('input, textarea, select, button, a, label, [contenteditable="true"]') !== null
+  )
+}
+
 export function CameraControls() {
-  const { camera, gl } = useThree()
+  const { camera, gl, events } = useThree()
   const isDragging = useRef(false)
   const lastMouse = useRef({ x: 0, y: 0 })
   const lastPinchDist = useRef<number | null>(null)
 
   const isMobile = isMobileDevice
   const initZ = isMobile ? 34 : 20
+
+  // How far the pointer has travelled during the current press, in screen pixels,
+  // and whether the click it is about to produce should be thrown away.
+  const dragDistance = useRef(0)
+  const swallowClick = useRef(false)
 
   const freeTarget = useRef(new THREE.Vector3(0, 0, initZ))
   const targetPosition = useRef(new THREE.Vector3(0, 0, initZ))
@@ -160,6 +182,18 @@ export function CameraControls() {
 
   useEffect(() => {
     const canvas = gl.domElement
+    // Pan and zoom listen on the event source, not on the canvas.
+    //
+    // drei portals every <Html> card into exactly this element, so the cards are
+    // not inside the canvas — they are laid over it, two levels up the tree. An
+    // event over one of them never reached a listener bound to the canvas, so
+    // anywhere a card sat the canvas stopped moving, and the sign-in card is half
+    // the screen. Binding to the element the cards actually live in puts the whole
+    // surface back under one pan and zoom; isControl is what still lets a form be
+    // a form. Read from react-three-fiber rather than counted in parentElements,
+    // because it is the same value drei reads when it decides where to portal.
+    const surface: HTMLElement =
+      events.connected instanceof HTMLElement ? events.connected : canvas.parentElement ?? canvas
 
     // How much world space a screen pixel covers depends on how far back the
     // camera sits, so panning has to scale with it too — otherwise a drag that
@@ -176,14 +210,20 @@ export function CameraControls() {
     }
 
     const onMouseDown = (e: MouseEvent) => {
-      if (e.button === 0) {
+      swallowClick.current = false
+      if (e.button === 0 && !isControl(e.target)) {
         isDragging.current = true
+        dragDistance.current = 0
         lastMouse.current = { x: e.clientX, y: e.clientY }
+        // Stops the browser turning the drag into a text selection across
+        // whatever card the pointer happens to be over
+        e.preventDefault()
       }
     }
 
     const onMouseMove = (e: MouseEvent) => {
       if (!isDragging.current) return
+      dragDistance.current += Math.abs(e.clientX - lastMouse.current.x) + Math.abs(e.clientY - lastMouse.current.y)
       const p = panFactor()
       const dx = (e.clientX - lastMouse.current.x) * 0.02 * p
       const dy = (e.clientY - lastMouse.current.y) * 0.02 * p
@@ -196,13 +236,36 @@ export function CameraControls() {
     }
 
     const onMouseUp = () => {
+      swallowClick.current = dragDistance.current > DRAG_SLOP
       isDragging.current = false
+      dragDistance.current = 0
       lastPinchDist.current = null
+    }
+
+    /**
+     * A drag is not a click.
+     *
+     * The browser fires `click` on release however far the pointer has travelled,
+     * and react-three-fiber turns that into a selection on whichever card happens
+     * to be under the release point — so panning across the canvas kept opening
+     * things that were never aimed at. Once a press has travelled past a few
+     * pixels, the click it produces is caught here on the way down, before it can
+     * reach the canvas react-three-fiber is listening on.
+     */
+    const onClickCapture = (e: MouseEvent) => {
+      if (!swallowClick.current) return
+      swallowClick.current = false
+      e.stopPropagation()
+      e.preventDefault()
     }
 
     const onTouchStart = (e: TouchEvent) => {
       if (e.touches.length === 1) {
+        // Two fingers are always a pinch, wherever they land — only a one-finger
+        // drag has to yield to a control underneath it
+        if (isControl(e.target)) return
         isDragging.current = true
+        dragDistance.current = 0
         lastMouse.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
       } else if (e.touches.length === 2) {
         isDragging.current = false
@@ -231,6 +294,8 @@ export function CameraControls() {
       }
 
       if (!isDragging.current || e.touches.length !== 1) return
+      dragDistance.current +=
+        Math.abs(e.touches[0].clientX - lastMouse.current.x) + Math.abs(e.touches[0].clientY - lastMouse.current.y)
       const p = panFactor()
       const dx = (e.touches[0].clientX - lastMouse.current.x) * 0.06 * p
       const dy = (e.touches[0].clientY - lastMouse.current.y) * 0.06 * p
@@ -241,24 +306,26 @@ export function CameraControls() {
       lastMouse.current = { x: e.touches[0].clientX, y: e.touches[0].clientY }
     }
 
-    canvas.addEventListener('wheel', onWheel, { passive: false })
-    canvas.addEventListener('mousedown', onMouseDown)
+    surface.addEventListener('wheel', onWheel, { passive: false })
+    surface.addEventListener('mousedown', onMouseDown)
+    surface.addEventListener('click', onClickCapture, true)
     window.addEventListener('mousemove', onMouseMove)
     window.addEventListener('mouseup', onMouseUp)
-    canvas.addEventListener('touchstart', onTouchStart, { passive: true })
-    canvas.addEventListener('touchmove', onTouchMove, { passive: true })
-    canvas.addEventListener('touchend', onMouseUp)
+    surface.addEventListener('touchstart', onTouchStart, { passive: true })
+    surface.addEventListener('touchmove', onTouchMove, { passive: true })
+    surface.addEventListener('touchend', onMouseUp)
 
     return () => {
-      canvas.removeEventListener('wheel', onWheel)
-      canvas.removeEventListener('mousedown', onMouseDown)
+      surface.removeEventListener('wheel', onWheel)
+      surface.removeEventListener('mousedown', onMouseDown)
+      surface.removeEventListener('click', onClickCapture, true)
       window.removeEventListener('mousemove', onMouseMove)
       window.removeEventListener('mouseup', onMouseUp)
-      canvas.removeEventListener('touchstart', onTouchStart)
-      canvas.removeEventListener('touchmove', onTouchMove)
-      canvas.removeEventListener('touchend', onMouseUp)
+      surface.removeEventListener('touchstart', onTouchStart)
+      surface.removeEventListener('touchmove', onTouchMove)
+      surface.removeEventListener('touchend', onMouseUp)
     }
-  }, [gl])
+  }, [gl, events])
 
   // The camera is driven by the same spring the cards use, rather than a lerp.
   //

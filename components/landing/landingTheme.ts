@@ -66,10 +66,7 @@ export function landingPalette(light: boolean): LandingPalette {
 }
 
 /**
- * Above every card on the canvas.
- *
- * drei hands each `<Html>` a z-index in the tens of millions (see nodeMotion),
- * and the canvas container does not create a stacking context, so ordinary
- * chrome at z-index 500 loses to a card that happens to be nearby.
+ * The landing's own chrome, in the same band as the rest of the interface —
+ * above the canvas, below the error toast.
  */
-export const Z_CHROME = 16_777_300
+export const Z_CHROME = 600
