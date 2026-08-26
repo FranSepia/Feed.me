@@ -29,6 +29,19 @@ export const MAX_CARD_WIDTH =
   typeof window !== 'undefined' ? Math.min(340, window.innerWidth - 40) : 340
 
 /**
+ * The sign-in card's height, taken at its taller state (sign-up).
+ *
+ * An estimate rather than a measurement, and shared by the two places that need
+ * it: the layout, which keeps everything else clear of the card, and the card
+ * itself, which cuts its click target to the same shape.
+ */
+export const AUTH_CARD_HEIGHT = 440
+
+/** The pill the card collapses to out in the orbit. */
+export const AUTH_PILL_WIDTH = 152
+export const AUTH_PILL_HEIGHT = 44
+
+/**
  * World size of a DOM card `cssPx` across.
  *
  * The two conversions — CSS px → screen px, screen px → world units — cancel the

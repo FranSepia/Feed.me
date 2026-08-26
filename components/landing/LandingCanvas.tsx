@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic'
 import { NodeData, useCanvasStore } from '@/lib/store'
 import { isLightBg } from '@/lib/colors'
 import { landingPalette, Z_CHROME } from './landingTheme'
-import { cardWorldSize, MAX_CARD_WIDTH } from './landingScale'
+import { cardWorldSize, MAX_CARD_WIDTH, AUTH_CARD_HEIGHT } from './landingScale'
 import { landingPositions, estimateCardHeight, type LandingItem } from './landingLayout'
 import { AUTH_NODE_ID, LANDING_CARDS, LANDING_PHOTOS } from './landingContent'
 
@@ -23,9 +23,6 @@ const Canvas3D = dynamic(
  * closer, the photos are real nodes, and dragging the background does what
  * dragging the background does everywhere else in the app.
  */
-
-/** Tall enough for the sign-up form, which is the taller of the two states. */
-const AUTH_CARD_HEIGHT = 440
 
 /**
  * Half-extents of a photo node at scale 1: ImageNode draws them 3 world units

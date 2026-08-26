@@ -128,11 +128,21 @@ export function CameraControls() {
       }
     } else {
       if (wasZoomed.current) {
-        targetPosition.current.copy(freeTarget.current)
+        // Deselecting comes back to the sign-in card when the canvas has one.
+        //
+        // The landing is a page about signing in, so "nothing selected" there
+        // means its opening view: every card back where it started and the form
+        // in the middle. A canvas someone made has no such subject, and on those
+        // deselecting leaves the camera where the visitor had got to, which is
+        // what you want when you are looking around.
+        const home = nodes.find((n) => n.type === 'auth')
+        if (home) targetPosition.current.set(home.position[0], home.position[1], initZ)
+        else targetPosition.current.copy(freeTarget.current)
+        freeTarget.current.copy(targetPosition.current)
         wasZoomed.current = false
       }
     }
-  }, [selectedNodeId, nodes])
+  }, [selectedNodeId, nodes, initZ])
 
   // Frame the diagram when the Venn view opens, and put the camera back where it
   // was when it closes. The frame arrives a render after the toggle, so this runs

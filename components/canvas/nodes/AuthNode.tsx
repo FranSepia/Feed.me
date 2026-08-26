@@ -10,7 +10,10 @@ import { NodeData, useCanvasStore } from '@/lib/store'
 import { NODE_SPRING, HTML_DEPTH_SELECTED } from '@/lib/nodeMotion'
 import { isLightBg } from '@/lib/colors'
 import { useAuth } from '@/lib/auth-context'
-import { CARD_DISTANCE_FACTOR, MAX_CARD_WIDTH } from '@/components/landing/landingScale'
+import {
+  CARD_DISTANCE_FACTOR, MAX_CARD_WIDTH, AUTH_CARD_HEIGHT,
+  AUTH_PILL_WIDTH, AUTH_PILL_HEIGHT, cardWorldSize,
+} from '@/components/landing/landingScale'
 import { landingPalette } from '@/components/landing/landingTheme'
 import { useAuthMode } from '@/components/landing/authMode'
 
@@ -64,17 +67,46 @@ export function AuthNode({ node, isSelected, isOrbit, targetPosition }: Props) {
     if (meshRef.current) meshRef.current.quaternion.copy(camera.quaternion)
   })
 
+  const collapsed = isOrbit && !isSelected
+
+  /**
+   * Selecting this card is settled in the DOM, not by a raycast.
+   *
+   * Every other card is picked by firing a ray into the scene and taking the
+   * nearest hit, and this one always lost that contest: photographs float at
+   * their own depths, several of them nearer the camera than the origin the
+   * form sits at, so a click on the form went through it and selected whichever
+   * photograph was behind. That put the sign-in card into the orbit and
+   * collapsed it to its pill — clicking the way in made the way in disappear.
+   *
+   * The card is real DOM, so it can simply take its own clicks. Stopping the
+   * event here also keeps it from reaching the canvas, which is what stops the
+   * ray from being cast at all — no depths to lose to.
+   *
+   * It selects but never deselects. The rest of the canvas toggles, but this one
+   * is a form: a click meant for a tab or a field must not throw away the
+   * selection that brought it to the middle. Clicking the background is how you
+   * leave it, the same as everywhere else.
+   */
+  const takeClick = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    if (!isSelected) setSelectedNode(node.id)
+  }
+
   return (
     <animated.mesh
       ref={meshRef}
       position={springs.position as unknown as [number, number, number]}
-      // A token hit area only. A full-size one would be a dozen world units of
-      // invisible plane swallowing clicks meant for the photos behind it, and
-      // the card itself is real DOM that takes its own clicks.
-      scale={[1.2, 1.2, 1]}
+      // Cut to the card, as a fallback for a pointer that somehow reaches the
+      // scene rather than the DOM above it
+      scale={[
+        cardWorldSize(collapsed ? AUTH_PILL_WIDTH : MAX_CARD_WIDTH),
+        cardWorldSize(collapsed ? AUTH_PILL_HEIGHT : AUTH_CARD_HEIGHT),
+        1,
+      ]}
       onClick={(e: { stopPropagation: () => void }) => {
         e.stopPropagation()
-        setSelectedNode(node.id)
+        if (!isSelected) setSelectedNode(node.id)
       }}
     >
       <planeGeometry args={[1, 1]} />
@@ -86,17 +118,19 @@ export function AuthNode({ node, isSelected, isOrbit, targetPosition }: Props) {
         zIndexRange={HTML_DEPTH_SELECTED}
         style={{ pointerEvents: 'auto' }}
       >
-        {isOrbit && !isSelected ? (
-          <AuthPill palette={p} onOpen={() => setSelectedNode(node.id)} />
-        ) : (
-          <AuthCard
-            palette={p}
-            light={light}
-            signIn={signIn}
-            signUp={signUp}
-            onSignedIn={() => router.push('/editor')}
-          />
-        )}
+        <div onClick={takeClick}>
+          {collapsed ? (
+            <AuthPill palette={p} onOpen={() => setSelectedNode(node.id)} />
+          ) : (
+            <AuthCard
+              palette={p}
+              light={light}
+              signIn={signIn}
+              signUp={signUp}
+              onSignedIn={() => router.push('/editor')}
+            />
+          )}
+        </div>
       </Html>
     </animated.mesh>
   )
