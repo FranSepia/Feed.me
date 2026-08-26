@@ -146,6 +146,12 @@ export function computeVennLayout(
   // circle grows into empty space. Measured: below this the cards start landing
   // on each other, above it they only get smaller.
   const cell = spacing * spacing * 2.0
+  // A card is a billboard, wider than it is tall, and one whose centre sits just
+  // inside the rim hangs half out of the circle. Every point offered to a card is
+  // kept this far clear of the boundary, and no fallback is allowed to give that
+  // up — a photo outside the circle of its own tag is the one thing this view
+  // cannot do.
+  const cardHalf = isMobile ? 1.2 : 1.7
 
   const k = islandTags.length
   const tagIndex = new Map(islandTags.map((t, i) => [t, i]))
@@ -179,10 +185,15 @@ export function computeVennLayout(
   }
 
   // ── 1. A circle is as big as what it holds ────────────────────────────────
+  //
+  // The area is what the cards need, and the rim is added on top: card centres
+  // can only use the disc inside the margin, so sizing the whole circle to the
+  // cards' area quietly halved the room they actually had and put them back on
+  // top of each other.
   const circles: Circle[] = tagCount.map((count) => ({
     x: 0,
     y: 0,
-    r: Math.max(spacing * 0.9, Math.sqrt((Math.max(count, 1) * cell) / Math.PI)),
+    r: cardHalf + Math.max(spacing * 0.5, Math.sqrt((Math.max(count, 1) * cell) / Math.PI)),
   }))
 
   // ── 2. Set them apart so each overlap is the size of what it shares ───────
@@ -235,6 +246,72 @@ export function computeVennLayout(
     }
   }
 
+  // ── 2b. Every combination needs somewhere legal to sit ───────────────────
+  //
+  // The distances above are a compromise once there are four or more circles, and
+  // a pair that shares cards can end up too far apart for their lens to hold one.
+  // The cards that could not be placed inside every circle they belong to were
+  // then dropped at the average of those circles' centres — which is how photos
+  // ended up outside the very circle they were tagged with, and why the tag that
+  // shares with everything was the worst affected.
+  //
+  // So circles that share cards are pulled together until each combination has
+  // room for a whole card. They share cards; more overlap is the honest picture.
+  const combos: number[][] = []
+  regions.forEach((_members, mask) => {
+    const inside: number[] = []
+    for (let i = 0; i < k; i++) if ((mask >> i) & 1) inside.push(i)
+    if (inside.length > 1) combos.push(inside)
+  })
+
+  // Aim for a sliver more than a card needs. Settling for exactly a card's worth
+  // leaves the anchor sitting on the limit, and a card placed there grazes the rim.
+  const roomNeeded = cardHalf + 0.15
+
+  for (let round = 0; round < 80; round++) {
+    let worst = 0
+    for (const inside of combos) {
+      const p = feasiblePoint(circles, inside, roomNeeded)
+      let deficit = 0
+      for (const i of inside) {
+        deficit = Math.max(deficit,
+          Math.hypot(p[0] - circles[i].x, p[1] - circles[i].y) + roomNeeded - circles[i].r)
+      }
+      if (deficit <= 0.01) continue
+      worst = Math.max(worst, deficit)
+
+      let cx = 0, cy = 0
+      for (const i of inside) { cx += circles[i].x; cy += circles[i].y }
+      cx /= inside.length; cy /= inside.length
+      for (const i of inside) {
+        const dx = cx - circles[i].x, dy = cy - circles[i].y
+        const len = Math.hypot(dx, dy)
+        if (len < 1e-6) continue
+        const step = Math.min(deficit * 0.5, len)
+        circles[i].x += (dx / len) * step
+        circles[i].y += (dy / len) * step
+      }
+    }
+    if (worst <= 0.01) break
+  }
+
+  // Three circles cannot always be arranged so that all three share an area, so
+  // whatever pulling could not solve is solved by growing the circles involved.
+  // Growing never pushes out a card that is already inside.
+  for (let round = 0; round < 16; round++) {
+    let grew = false
+    for (const inside of combos) {
+      const p = feasiblePoint(circles, inside, roomNeeded)
+      for (const i of inside) {
+        const need = Math.hypot(p[0] - circles[i].x, p[1] - circles[i].y) + roomNeeded - circles[i].r
+        // A shade more than strictly needed, so the anchor is never left sitting
+        // exactly on the limit — a card placed there grazes the rim
+        if (need > 0.01) { circles[i].r += need + 0.12; grew = true }
+      }
+    }
+    if (!grew) break
+  }
+
   // Recentre, so the camera frames the diagram and not the empty space beside it
   {
     const cx = (Math.min(...circles.map((c) => c.x - c.r)) + Math.max(...circles.map((c) => c.x + c.r))) / 2
@@ -250,7 +327,10 @@ export function computeVennLayout(
     const outside: number[] = []
     for (let i = 0; i < k; i++) ((mask >> i) & 1 ? inside : outside).push(i)
 
-    const points = sampleRegion(circles, inside, outside, members.length, spacing, hash(String(mask)))
+    const anchor = feasiblePoint(circles, inside, cardHalf)
+    const points = sampleRegion(
+      circles, inside, outside, members.length, spacing, cardHalf, anchor, hash(String(mask))
+    )
     members.forEach((node: NodeData, i: number) => {
       const p = points[i] ?? points[points.length - 1] ?? [circles[inside[0]].x, circles[inside[0]].y]
       // A hair of stagger so cards that do overlap always overlap the same way
@@ -298,14 +378,50 @@ export function computeVennLayout(
 }
 
 /**
- * Points spread over one exact region: inside every circle in `inside`, outside
- * every circle in `outside`.
+ * A point that sits inside every circle in `inside` with `margin` to spare.
+ *
+ * Projecting onto one disc after another converges on a point they all share —
+ * discs are convex, so this cannot get stuck. When they share nothing the result
+ * is the closest thing to it, which is what the passes above measure to decide
+ * how far the circles still have to move.
+ */
+function feasiblePoint(circles: Circle[], inside: number[], margin: number): [number, number] {
+  let x = 0, y = 0
+  for (const i of inside) { x += circles[i].x; y += circles[i].y }
+  x /= inside.length; y /= inside.length
+
+  for (let iter = 0; iter < 150; iter++) {
+    let moved = false
+    for (const i of inside) {
+      const c = circles[i]
+      const limit = Math.max(c.r - margin, 0.001)
+      const dx = x - c.x, dy = y - c.y
+      const d = Math.hypot(dx, dy)
+      if (d > limit) {
+        const scale = limit / (d || 1)
+        x = c.x + dx * scale
+        y = c.y + dy * scale
+        moved = true
+      }
+    }
+    if (!moved) break
+  }
+  return [x, y]
+}
+
+/**
+ * Points spread over one exact region: far enough inside every circle in
+ * `inside` that a whole card fits, and clear of every circle in `outside`.
  *
  * Candidates are drawn on a jittered grid and then thinned by repeatedly taking
  * whichever is furthest from everything chosen so far. That spreads the cards
  * evenly over the whole shape however odd the shape is — a crescent, a lens, a
  * sliver. Placing them by formula instead only ever fills a disc, which is what
  * left a tag's photos huddled in one part of its circle.
+ *
+ * Staying clear of the circles it does not belong to is a preference and is given
+ * up when the shape is too tight for it; staying inside the ones it does belong
+ * to never is.
  */
 function sampleRegion(
   circles: Circle[],
@@ -313,9 +429,34 @@ function sampleRegion(
   outside: number[],
   count: number,
   spacing: number,
+  cardHalf: number,
+  anchor: [number, number],
   seed: number
 ): [number, number][] {
   if (count === 0 || inside.length === 0) return []
+
+  // A hair beyond the card's own half-width, so a point that lands exactly on the
+  // limit still reads as inside rather than as a card grazing the rim
+  const keepIn = cardHalf + 0.05
+
+  // How much room there is around the anchor while still holding a whole card
+  let inscribed = Infinity
+  for (const i of inside) {
+    inscribed = Math.min(
+      inscribed,
+      circles[i].r - keepIn - Math.hypot(anchor[0] - circles[i].x, anchor[1] - circles[i].y)
+    )
+  }
+  inscribed = Math.max(inscribed, 0)
+
+  // Last resort, and still legal: fan the cards out around the anchor, inside the
+  // room that is known to be there
+  const aroundAnchor = (): [number, number][] =>
+    Array.from({ length: count }, (_, i) => {
+      const r = count === 1 ? 0 : inscribed * Math.sqrt((i + 0.5) / count)
+      const a = i * GOLDEN
+      return [anchor[0] + Math.cos(a) * r, anchor[1] + Math.sin(a) * r] as [number, number]
+    })
 
   // The region cannot reach outside the smallest circle containing it
   let minX = -Infinity, maxX = Infinity, minY = -Infinity, maxY = Infinity
@@ -325,32 +466,21 @@ function sampleRegion(
     minY = Math.max(minY, circles[i].y - circles[i].r)
     maxY = Math.min(maxY, circles[i].y + circles[i].r)
   }
+  if (!(maxX > minX && maxY > minY)) return aroundAnchor()
 
-  const middle = (): [number, number] => {
-    let x = 0, y = 0
-    for (const i of inside) { x += circles[i].x; y += circles[i].y }
-    return [x / inside.length, y / inside.length]
-  }
-
-  if (!(maxX > minX && maxY > minY)) {
-    return Array.from({ length: count }, () => middle())
-  }
-
-  const inRegion = (x: number, y: number, margin: number): boolean => {
+  const inRegion = (x: number, y: number, clearance: number): boolean => {
     for (const i of inside) {
-      if (Math.hypot(x - circles[i].x, y - circles[i].y) > circles[i].r - margin) return false
+      // Never negotiable
+      if (Math.hypot(x - circles[i].x, y - circles[i].y) > circles[i].r - keepIn) return false
     }
     for (const i of outside) {
-      if (Math.hypot(x - circles[i].x, y - circles[i].y) < circles[i].r + margin) return false
+      if (Math.hypot(x - circles[i].x, y - circles[i].y) < circles[i].r + clearance) return false
     }
     return true
   }
 
-  // Enough candidates to choose from, on a finer grid when the shape is thin. The
-  // margin keeps cards off the rim, and is given up if the region is too narrow
-  // to afford one.
   let candidates: [number, number][] = []
-  for (const margin of [spacing * 0.45, spacing * 0.2, 0]) {
+  for (const clearance of [cardHalf, cardHalf * 0.4, 0]) {
     for (const divisor of [0.55, 0.32, 0.18]) {
       const step = spacing * divisor
       const rand = mulberry32(seed + Math.round(step * 1000))
@@ -359,7 +489,7 @@ function sampleRegion(
         for (let x = minX; x <= maxX; x += step) {
           const jx = x + (rand() - 0.5) * step * 0.7
           const jy = y + (rand() - 0.5) * step * 0.7
-          if (inRegion(jx, jy, margin)) found.push([jx, jy])
+          if (inRegion(jx, jy, clearance)) found.push([jx, jy])
         }
       }
       if (found.length > candidates.length) candidates = found
@@ -368,21 +498,20 @@ function sampleRegion(
     if (candidates.length >= count * 2) break
   }
 
-  // Three circles cannot always be drawn so that every combination of them has an
-  // area of its own. When one has none, the cards go to the middle of what they
-  // do belong to rather than nowhere.
-  if (candidates.length === 0) return Array.from({ length: count }, () => middle())
+  if (candidates.length === 0) return aroundAnchor()
   if (candidates.length <= count) {
-    return Array.from({ length: count }, (_, i) => candidates[i % candidates.length])
+    // Everything that was found is used, and the rest fan out around the anchor
+    const extra = aroundAnchor()
+    return Array.from({ length: count }, (_, i) =>
+      i < candidates.length ? candidates[i] : extra[i])
   }
 
   // Farthest-point thinning: start nearest the region's middle, then always take
   // whichever candidate is furthest from everything picked so far
-  const [mx, my] = middle()
   let first = 0
   let best = Infinity
   candidates.forEach(([x, y], i) => {
-    const d = Math.hypot(x - mx, y - my)
+    const d = Math.hypot(x - anchor[0], y - anchor[1])
     if (d < best) { best = d; first = i }
   })
 
