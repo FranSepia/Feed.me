@@ -2,6 +2,7 @@
 
 import { useCanvasStore } from '@/lib/store'
 import { useResponsive } from '@/lib/useResponsive'
+import { useProfilePanel } from '@/lib/profilePanel'
 
 /**
  * Latching toggle for the Venn view, on both screens the canvas appears on — the
@@ -12,6 +13,11 @@ import { useResponsive } from '@/lib/useResponsive'
  * same line and would otherwise shove this button around. In the editor it steps
  * one place inward, because the share button already owns the corner there.
  *
+ * The profile panel comes in along that same edge and would otherwise open
+ * underneath this button, which lands it squarely on the panel's Socials tab. So
+ * it travels: on a wide screen it steps aside by the width of the panel, and on a
+ * phone, where the panel takes the whole screen, it gets out of the way entirely.
+ *
  * Pressed is a real state, not a flash: while the diagram is open the button
  * stays sunken and a shade darker, and clicking it again lets it back up.
  */
@@ -21,9 +27,12 @@ export function VennButton() {
   const nodes = useCanvasStore((s) => s.nodes)
   const readOnly = useCanvasStore((s) => s.readOnly)
   const { isMobile } = useResponsive()
+  const { coversScreen, shift } = useProfilePanel()
 
   // Nothing to draw a diagram from
   if (!nodes.some((n) => n.tags.length > 0)) return null
+  // The panel is the whole screen — there is no canvas left to toggle
+  if (coversScreen) return null
 
   return (
     <button
@@ -36,7 +45,7 @@ export function VennButton() {
         // there is one
         top: isMobile ? '16px' : '24px',
         // A shared canvas has the corner free; the editor's share button does not
-        right: readOnly ? '24px' : '78px',
+        right: `${(readOnly ? 24 : 78) + shift}px`,
         zIndex: 499,
         width: '44px',
         height: '44px',

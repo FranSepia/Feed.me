@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback } from 'react'
 import { useCanvasStore } from '@/lib/store'
 import { useResponsive } from '@/lib/useResponsive'
+import { useProfilePanel } from '@/lib/profilePanel'
 import { supabase } from '@/lib/supabase'
 import { useAuth } from '@/lib/auth-context'
 
@@ -176,6 +177,7 @@ export function BottomBar() {
   const editMode = useCanvasStore((s) => s.editMode)
   const selectedNode = useCanvasStore((s) => s.selectedNode)
   const { isMobile } = useResponsive()
+  const { coversScreen } = useProfilePanel()
   const { user } = useAuth()
 
   // All unique tags already in the canvas
@@ -432,7 +434,7 @@ export function BottomBar() {
   return (
     <>
     {/* Backdrop — click outside the panel to close it */}
-    {activeType && (
+    {activeType && !coversScreen && (
       <div
         onClick={() => setActiveType(null)}
         style={{ position: 'fixed', inset: 0, zIndex: 499 }}
@@ -445,7 +447,11 @@ export function BottomBar() {
         left: '50%',
         transform: 'translateX(-50%)',
         zIndex: 500,
-        display: 'flex',
+        // A phone's profile panel fills the screen, so this bar steps out of
+        // sight rather than floating on top of it. Hidden, not unmounted: a
+        // half-written upload lives in this component and has to survive the
+        // trip to the panel and back.
+        display: coversScreen ? 'none' : 'flex',
         flexDirection: 'column',
         alignItems: 'center',
         gap: '10px',

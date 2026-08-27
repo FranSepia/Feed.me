@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useCanvasStore, SOCIAL_PLATFORMS } from '@/lib/store'
 import { useResponsive } from '@/lib/useResponsive'
+import { PROFILE_PANEL_WIDTH } from '@/lib/profilePanel'
 import { useAuth } from '@/lib/auth-context'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
@@ -90,7 +91,7 @@ export function ProfilePanel() {
       />
       <div style={{
         position: 'fixed', right: 0, top: 0, bottom: 0,
-        width: isMobile ? '100%' : '320px',
+        width: isMobile ? '100%' : `${PROFILE_PANEL_WIDTH}px`,
         // Neumorphic glass panel matching BottomBar aesthetic
         background: 'linear-gradient(180deg, rgba(255,255,255,0.72) 0%, rgba(245,243,238,0.65) 100%)',
         borderLeft: isMobile ? 'none' : '1px solid rgba(255,255,255,0.90)',

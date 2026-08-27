@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useResponsive } from '@/lib/useResponsive'
 import { useCanvasStore } from '@/lib/store'
+import { useProfilePanel } from '@/lib/profilePanel'
 import { isLightBg } from '@/lib/colors'
 
 interface Props {
@@ -15,8 +16,11 @@ export function ShareButton({ username }: Props) {
   const { isMobile } = useResponsive()
   const bgColor = useCanvasStore((s) => s.bgColor)
   const light = isLightBg(bgColor)
+  const { coversScreen, shift } = useProfilePanel()
 
   if (!username) return null
+  // On a phone the profile panel is the whole screen; nothing floats over it
+  if (coversScreen) return null
 
   const handleCopy = async () => {
     const url = `${window.location.origin}/${username}`
@@ -50,7 +54,10 @@ export function ShareButton({ username }: Props) {
     <div style={{
       position: 'fixed',
       top: isMobile ? '16px' : '24px',
-      right: '24px',
+      // Steps aside when the profile panel opens along this edge, rather than
+      // floating on top of it
+      right: `${24 + shift}px`,
+      transition: 'right 0.18s',
       zIndex: 500,
       display: 'flex',
       alignItems: 'center',

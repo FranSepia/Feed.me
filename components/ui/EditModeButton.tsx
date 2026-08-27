@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useCanvasStore } from '@/lib/store'
 import { useResponsive } from '@/lib/useResponsive'
+import { useProfilePanel } from '@/lib/profilePanel'
 
 export function EditModeButton() {
   const editMode = useCanvasStore((s) => s.editMode)
@@ -10,8 +11,11 @@ export function EditModeButton() {
   const readOnly = useCanvasStore((s) => s.readOnly)
   const [hover, setHover] = useState(false)
   const { isMobile } = useResponsive()
+  const { coversScreen } = useProfilePanel()
 
   if (readOnly) return null
+  // A phone's profile panel fills the screen — the canvas controls step off it
+  if (coversScreen) return null
 
   return (
     <button

@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useCanvasStore } from '@/lib/store'
 import { useResponsive } from '@/lib/useResponsive'
+import { useProfilePanel } from '@/lib/profilePanel'
 
 export function FilterButton() {
   const [open, setOpen] = useState(false)
@@ -10,6 +11,7 @@ export function FilterButton() {
   const setFilterTags = useCanvasStore((s) => s.setFilterTags)
   const nodes = useCanvasStore((s) => s.nodes)
   const { isMobile } = useResponsive()
+  const { coversScreen } = useProfilePanel()
 
   const allTags = Array.from(new Set(nodes.flatMap((n) => n.tags))).sort()
   const isActive = filterTags.length > 0
@@ -23,6 +25,8 @@ export function FilterButton() {
   }
 
   if (allTags.length === 0) return null
+  // A phone's profile panel fills the screen — the canvas controls step off it
+  if (coversScreen) return null
 
   return (
     <>
